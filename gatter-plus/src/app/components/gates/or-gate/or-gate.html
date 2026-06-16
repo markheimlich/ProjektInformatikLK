@@ -1,0 +1,19 @@
+<!-- ODER-Gatter (OR) nach DIN 40900 – Symbol "≥1" -->
+<div
+  class="gate"
+  [class.toolbar-mode]="toolbarMode"
+  [class.signal-high]="signalOutput === true"
+  [class.signal-low]="signalOutput === false"
+>
+  <div class="pins-in">
+    <div class="wire"></div>
+    <div class="wire"></div>
+  </div>
+  <div class="gate-body">
+    <!-- ≥1 bedeutet: Ausgang HIGH wenn mindestens ein Eingang HIGH -->
+    <span class="symbol">≥1</span>
+  </div>
+  <div class="pins-out">
+    <div class="wire"></div>
+  </div>
+</div>

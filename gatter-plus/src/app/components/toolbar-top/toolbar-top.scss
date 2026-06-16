@@ -1,0 +1,115 @@
+/* Obere Toolbar */
+.toolbar-top {
+  display: flex;
+  align-items: center;
+  min-height: 60px;
+  background: #1e293b;
+  color: #ffffff;
+  padding: 0 12px;
+  gap: 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid #334155;
+  z-index: 10;
+  overflow-x: auto; /* horizontales Scrollen auf kleinen Bildschirmen */
+}
+
+.app-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #60a5fa;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.divider {
+  width: 1px;
+  height: 36px;
+  background: #334155;
+  margin: 0 10px;
+  flex-shrink: 0;
+}
+
+/* Gruppe: Label oben + Items darunter */
+.palette-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.group-label {
+  font-size: 9px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  padding-left: 4px;
+}
+
+.palette-items {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+}
+
+/* Einzelnes Palette-Item */
+.palette-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: grab;
+  transition: background 0.15s;
+
+  &:hover {
+    background: #334155;
+  }
+  &:active {
+    cursor: grabbing;
+    background: #475569;
+  }
+}
+
+.item-name {
+  font-size: 9px;
+  color: #94a3b8;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Spacer schiebt Simulation-Button nach rechts */
+.spacer { flex: 1; }
+
+/* Simulations-Start/Stop-Button */
+.sim-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 2px solid #22c55e;
+  background: transparent;
+  color: #22c55e;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+
+  &:hover {
+    background: #22c55e;
+    color: #ffffff;
+  }
+
+  /* Aktiver Modus: roter Stop-Button */
+  &.active {
+    border-color: #ef4444;
+    color: #ef4444;
+    &:hover {
+      background: #ef4444;
+      color: #ffffff;
+    }
+  }
+}

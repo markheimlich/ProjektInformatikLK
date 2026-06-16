@@ -1,0 +1,22 @@
+1. Teil der Umsetzung: Technologien
+
+
+Programmiersprache: HTML + css + typescript
+Entwicklungsumgebung: Visual Studios
+Frontend-Framework: Angular
+Backend: Node.js
+Webapplikation
+Datenbank: Keine
+
+Ziele in der ersten Phase:
+- Website erstellen, die die folgenden Grundfunktionen erfüllt
+- Dabei soll ein undendliches, weißes whiteboard vorhanden sein, das gerastert ist und in der man sich bewegen + scrollen kann.
+- Oben und links sollen erstmal zwei fast leere Leisten sein (eine vertikal eine horizontal)
+- Die Name der Applikation ist GatterPLUS
+- In der obene Leiste soll ein Und-Gatter sein, dass man rausziehen können soll auf das Whiteboard. Das ist ein und Gatter: &
+
+Achte bei der Umsetzung darauf, dass du alle Ebenen sorgefälltig getrennt von einander sind
+Dokumentiere jede Funktion und jede Zeile sorgfälltig, sodass man diese nachvollziehen kann
+Dateien sollen verständlich und aussagekräftig benannt sein
+Stelle sicher, dass man bereits in dieser Funktion mithilfe eines commands mithilfe des Codes die Website lokal aufrufen kann, die Anweisung dazu speichere in einer Datei
+Alle Extensions/Technologien die du benutzt hast speichere in dieser Datei ebenfalls ab

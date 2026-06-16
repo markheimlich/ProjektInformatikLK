@@ -1,0 +1,133 @@
+<!--
+  Whiteboard-Layer-Struktur (unten → oben):
+  1. whiteboard-viewport  – weißer Hintergrund, empfängt alle Maus-Events
+  2. grid-svg             – SVG-Raster (zuverlässiger als CSS background-image)
+  3. gates-layer          – platzierte Komponenten (CSS transform)
+  4. wires-layer (SVG)    – Leitungen (SVG lines)
+  5. pins-layer           – Pin-Highlights im Wire-Modus
+-->
+<div
+  #viewport
+  class="whiteboard-viewport"
+  [class.panning]="isPanning"
+  [class.dragging]="isDraggingGate"
+  [class.wire-mode]="toolMode === 'wire'"
+  (mousedown)="onMouseDown($event)"
+>
+
+  <!-- ── Raster via SVG-Pattern ────────────────────────────────────────── -->
+  <!--
+    SVG-Pattern ist die zuverlässigste Methode für ein scrollendes Raster.
+    [attr.x] und [attr.y] auf dem <pattern> verschieben das Muster mit dem Pan-Versatz.
+    panX % 40: Modulo 40 hält den Offset innerhalb einer Gitter-Zelle (40px).
+  -->
+  <svg class="grid-svg" aria-hidden="true">
+    <defs>
+      <pattern
+        id="wb-grid"
+        width="40"
+        height="40"
+        patternUnits="userSpaceOnUse"
+        [attr.x]="panX % 40"
+        [attr.y]="panY % 40"
+      >
+        <!-- Obere horizontale Linie der Zelle -->
+        <line x1="0" y1="0" x2="40" y2="0" stroke="#c0c8d4" stroke-width="1"/>
+        <!-- Linke vertikale Linie der Zelle -->
+        <line x1="0" y1="0" x2="0" y2="40" stroke="#c0c8d4" stroke-width="1"/>
+      </pattern>
+    </defs>
+    <!-- Füllt den gesamten Viewport mit dem Raster-Muster -->
+    <rect width="100%" height="100%" fill="url(#wb-grid)"/>
+  </svg>
+
+  <!-- ── Komponenten-Layer ──────────────────────────────────────────────── -->
+  <div class="gates-layer" [style.transform]="getGatesLayerTransform()">
+    @for (gate of gates; track gate.id) {
+      <div class="placed-gate" [style.left.px]="gate.x" [style.top.px]="gate.y">
+
+        @if (gate.type === 'and') {
+          <app-and-gate [signalOutput]="simulationMode ? getSignalOutput(gate.id) : null"></app-and-gate>
+        }
+        @if (gate.type === 'or') {
+          <app-or-gate [signalOutput]="simulationMode ? getSignalOutput(gate.id) : null"></app-or-gate>
+        }
+        @if (gate.type === 'not') {
+          <app-not-gate [signalOutput]="simulationMode ? getSignalOutput(gate.id) : null"></app-not-gate>
+        }
+        @if (gate.type === 'input') {
+          <app-input-switch
+            [value]="gate.inputValue ?? false"
+            [simulationMode]="simulationMode"
+          ></app-input-switch>
+        }
+        @if (gate.type === 'output') {
+          <app-output-led
+            [signalInput]="simulationMode ? getSignalInput(gate.id) : null"
+          ></app-output-led>
+        }
+
+      </div>
+    }
+  </div>
+
+  <!-- ── SVG-Leitungs-Layer ─────────────────────────────────────────────── -->
+  <svg class="wires-layer" [style.transform]="getGatesLayerTransform()">
+
+    @for (wire of wires; track wire.id) {
+      @let coords = getWireCoords(wire);
+      @if (coords) {
+        <line
+          [attr.x1]="coords.x1" [attr.y1]="coords.y1"
+          [attr.x2]="coords.x2" [attr.y2]="coords.y2"
+          class="wire-line"
+          [class.wire-high]="simulationMode && isWireHigh(wire)"
+          [class.wire-low]="simulationMode && !isWireHigh(wire)"
+        />
+      }
+    }
+
+    <!-- Vorschau-Leitung (gestrichelt, während Leitung gezogen wird) -->
+    @if (wireDrawing) {
+      <line
+        [attr.x1]="wireDrawing.x1" [attr.y1]="wireDrawing.y1"
+        [attr.x2]="tentativeX"     [attr.y2]="tentativeY"
+        class="wire-tentative"
+      />
+    }
+
+  </svg>
+
+  <!-- ── Pin-Highlight-Layer (nur im Wire-Modus) ────────────────────────── -->
+  @if (toolMode === 'wire') {
+    <div class="pins-layer" [style.transform]="getGatesLayerTransform()">
+      @for (gate of gates; track gate.id) {
+
+        <!-- Ausgangs-Pins: grüne Punkte -->
+        @let outPins = gate.type === 'output' ? [] : [{x:76,y:26}];
+        @for (pin of outPins; track $index) {
+          <div class="pin-dot output-pin"
+            [style.left.px]="gate.x + pin.x - 5"
+            [style.top.px]="gate.y + pin.y - 5"
+            [class.drawing-start]="wireDrawing?.fromGateId === gate.id"
+          ></div>
+        }
+
+        <!-- Eingangs-Pins: blaue Punkte -->
+        @let inPins = gate.type === 'and' ? [{x:0,y:18},{x:0,y:34}]
+                    : gate.type === 'or'  ? [{x:0,y:18},{x:0,y:34}]
+                    : gate.type === 'not' ? [{x:0,y:26}]
+                    : gate.type === 'output' ? [{x:0,y:26}]
+                    : [];
+        @for (pin of inPins; track $index) {
+          <div class="pin-dot input-pin"
+            [style.left.px]="gate.x + pin.x - 5"
+            [style.top.px]="gate.y + pin.y - 5"
+          ></div>
+        }
+
+      }
+    </div>
+  }
+
+</div>

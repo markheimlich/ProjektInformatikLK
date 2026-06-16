@@ -1,0 +1,24 @@
+<!-- GatterPLUS Haupt-Layout -->
+<div class="app-layout">
+
+  <!-- Obere Toolbar: Gatter-Palette + Simulations-Toggle -->
+  <app-toolbar-top
+    [simulationMode]="simulationMode"
+    (simulationToggle)="onSimulationToggle()"
+  ></app-toolbar-top>
+
+  <!-- Hauptbereich: Werkzeug-Toolbar + Whiteboard -->
+  <div class="main-area">
+
+    <!-- Linke Toolbar: Werkzeug-Wahl -->
+    <app-toolbar-left
+      [activeTool]="activeTool"
+      (toolSelected)="onToolSelected($event)"
+    ></app-toolbar-left>
+
+    <!-- Das Whiteboard -->
+    <app-whiteboard></app-whiteboard>
+
+  </div>
+
+</div>

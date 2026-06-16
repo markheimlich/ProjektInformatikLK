@@ -1,0 +1,23 @@
+<!-- UND-Gatter (AND) nach DIN 40900 – Symbol "&" -->
+<div
+  class="gate"
+  [class.toolbar-mode]="toolbarMode"
+  [class.signal-high]="signalOutput === true"
+  [class.signal-low]="signalOutput === false"
+>
+  <!-- Eingangs-Drähte (links, 2 Stück) -->
+  <div class="pins-in">
+    <div class="wire"></div>
+    <div class="wire"></div>
+  </div>
+
+  <!-- Gatter-Körper: Rechteck mit "&" -->
+  <div class="gate-body">
+    <span class="symbol">&amp;</span>
+  </div>
+
+  <!-- Ausgangs-Draht (rechts, 1 Stück) -->
+  <div class="pins-out">
+    <div class="wire"></div>
+  </div>
+</div>

@@ -1,0 +1,131 @@
+/* Host-Element (app-whiteboard) muss den gesamten restlichen Platz einnehmen.
+   Ohne :host bleibt das Custom-Element display:inline mit 0px Höhe/Breite,
+   wodurch das Raster unsichtbar und Drag-Drop nie auf dem Whiteboard landet. */
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;        /* füllt den Rest von .main-area (flex row) */
+  min-width: 0;   /* verhindert Flex-Overflow auf der Hauptachse */
+  min-height: 0;  /* verhindert Flex-Overflow auf der Kreuzachse */
+}
+
+/* Whiteboard */
+
+.whiteboard-viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  /* Weißer Hintergrund – das Raster kommt vom grid-svg-Element darunter */
+  background: #ffffff;
+  user-select: none;
+}
+
+/* SVG-Raster: füllt den gesamten Viewport, liegt unter allen anderen Layern */
+.grid-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;  /* Klicks gehen durch zum whiteboard-viewport */
+}
+
+.whiteboard-viewport.panning       { cursor: grabbing; }
+.whiteboard-viewport.dragging      { cursor: copy; }
+.whiteboard-viewport.wire-mode     { cursor: crosshair; }
+
+/* ── Komponenten-Layer ──────────────────────────────────────────────────── */
+
+.gates-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none; /* Maus-Events gehen durch zum Viewport */
+}
+
+.placed-gate {
+  position: absolute;
+  /* Komponenten selbst sind nicht interaktiv (Viewport übernimmt alle Events) */
+  pointer-events: none;
+}
+
+/* ── SVG-Leitungs-Layer ──────────────────────────────────────────────────── */
+
+.wires-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Sehr groß damit Leitungen immer sichtbar sind */
+  width: 99999px;
+  height: 99999px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* Normale Leitung */
+.wire-line {
+  stroke: #334155;
+  stroke-width: 2;
+  fill: none;
+}
+
+/* Leitung führt HIGH-Signal: grün */
+.wire-line.wire-high {
+  stroke: #16a34a;
+  stroke-width: 2.5;
+}
+
+/* Leitung führt LOW-Signal: dunkelgrau */
+.wire-line.wire-low {
+  stroke: #64748b;
+  stroke-width: 2;
+}
+
+/* Vorschau-Leitung (gestrichelt) */
+.wire-tentative {
+  stroke: #3b82f6;
+  stroke-width: 2;
+  fill: none;
+  stroke-dasharray: 6 4;
+  opacity: 0.8;
+}
+
+/* ── Pin-Highlight-Layer ─────────────────────────────────────────────────── */
+
+.pins-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+/* Pin-Punkt: kleiner Kreis */
+.pin-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid;
+  pointer-events: none;
+}
+
+/* Ausgangs-Pin: grün */
+.output-pin {
+  background: #dcfce7;
+  border-color: #16a34a;
+}
+
+/* Eingangs-Pin: blau */
+.input-pin {
+  background: #dbeafe;
+  border-color: #1d4ed8;
+}
+
+/* Aktiver Start-Pin (Leitung begonnen): heller hervorgehoben */
+.drawing-start {
+  background: #fef08a;
+  border-color: #ca8a04;
+  width: 12px;
+  height: 12px;
+  margin: -1px; /* Kompensiert die größere Size */
+}
