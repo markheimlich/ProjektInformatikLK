@@ -1,0 +1,21 @@
+
+Ziele in der zweiten Phase:
+- Implementiere alle restliche Gatter der liste, die bisher noch nicht umgesetzt sind: 
+    - Gatter: `&` (AND), `≥1` (OR), `=1` (XOR) — **IEC/DIN-Notation bestätigt**
+    - Flip-Flops: JK-FF (mit J, C, S, R, K Pins), Register
+    - Sonderkomponenten: HA (Halbaddierer), VA (Volladdierer)
+    - Ein-/Ausgabe: LED, Text-Label (`oA`), Taktgeber (TG)
+    - Bus/Register: Mehrbit-Blöcke (0 0 0 0)
+- Leitungen sollen brechbar sein
+- In einer Rechtentasksleiste wenn man auf ein Bauteil klickt:
+    - Konfiguration der Eingangsanzahl (Spinner: 2–N)
+    - 4 Ausrichtungs-/Rotations-Buttons (0°, 90°, 180°, 270°)
+    - Farb-Auswahl für Komponenten (grün, rot, gelb, orange, grün)
+    - Taktgeber-Konfiguration: Taktanzahl (n), Taktlänge (ms), Wellenform-Auswahl
+    - Änderung der Inputanzahl
+
+
+
+
+Achte bei der Umsetzung darauf, dass du alle Ebenen sorgefälltig getrennt von einander sind
+Dokumentiere jede Funktion und jede Zeile sorgfälltig, sodass man diese nachvollziehen kann

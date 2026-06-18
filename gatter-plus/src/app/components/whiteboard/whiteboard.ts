@@ -3,112 +3,128 @@ import {
   ElementRef,
   HostListener,
   inject,
+  OnDestroy,
   ViewChild,
 } from '@angular/core';
-import { AndGate } from '../gates/and-gate/and-gate';
-import { OrGate } from '../gates/or-gate/or-gate';
-import { NotGate } from '../gates/not-gate/not-gate';
+import { AndGate }     from '../gates/and-gate/and-gate';
+import { OrGate }      from '../gates/or-gate/or-gate';
+import { NotGate }     from '../gates/not-gate/not-gate';
+import { XorGate }     from '../gates/xor-gate/xor-gate';
+import { JkFlipflop }  from '../gates/jk-flipflop/jk-flipflop';
+import { HalfAdder }   from '../gates/half-adder/half-adder';
+import { FullAdder }   from '../gates/full-adder/full-adder';
 import { InputSwitch } from '../io/input-switch/input-switch';
-import { OutputLed } from '../io/output-led/output-led';
+import { OutputLed }   from '../io/output-led/output-led';
+import { ClockGen }    from '../io/clock-gen/clock-gen';
+import { TextLabel }   from '../io/text-label/text-label';
 import {
-  GateInstance,
-  GateType,
-  GATE_PIN_OFFSETS,
-  PIN_HIT_RADIUS,
-  WireConnection,
+  GateInstance, GateType, WireConnection,
+  Rotation, GateColor,
+  getGatePinOffsets, getGateDimensions,
+  getPinWorldPos, isPointInGate,
+  PIN_HIT_RADIUS, createGateInstance, computeOrthogonalWaypoints,
 } from '../../models/gate.model';
-import { DragStateService } from '../../services/drag-state.service';
-import {
-  ComponentSignalState,
-  SimulationService,
-} from '../../services/simulation.service';
-import { ToolMode } from '../toolbar-left/toolbar-left';
+import { DragStateService }    from '../../services/drag-state.service';
+import { SimulationService, ComponentSignalState } from '../../services/simulation.service';
+import { ToolMode }            from '../toolbar-left/toolbar-left';
 
 /** Zustand während des Leitungs-Zeichnens */
 interface WireDrawingState {
   fromGateId: string;
   fromPinIndex: number;
-  /** Startpunkt der Leitung in logischen Canvas-Koordinaten */
   x1: number;
   y1: number;
+}
+
+/** Zustand während des Verschiebens eines platzierten Bauteils */
+interface GateDragState {
+  gateId: string;
+  /** Logische Ausgangsposition beim Drag-Start */
+  originX: number;
+  originY: number;
+  /** Mausposition beim Drag-Start (Bildschirm) */
+  startMouseX: number;
+  startMouseY: number;
 }
 
 /**
  * Das unendliche, gerasterte Whiteboard.
  *
  * Verantwortlich für:
- * - Raster-Anzeige (CSS background-image auf dem Viewport)
- * - Pan (Verschieben des Canvas)
- * - Komponenten platzieren (per mousedown in Toolbar → mouseup hier)
- * - Leitungen zeichnen (Klick auf Ausgangs-Pin → Klick auf Eingangs-Pin)
- * - Simulations-Modus: Signale berechnen und anzeigen
+ * - SVG-Raster (scrollt mit dem Pan-Versatz)
+ * - Pan (Maus ziehen, Leinwand verschieben)
+ * - Gatter-Drop (Toolbar → mousedown → mouseup auf Whiteboard)
+ * - Gatter verschieben (Klick-Drag auf platziertes Bauteil)
+ * - Gatter auswählen (Klick auf Bauteil → Properties Panel)
+ * - Leitungen zeichnen (Wire-Modus, rechtwinklige Führung)
+ * - Simulation: BFS-Signalpropagierung + Taktgeber-Intervalle
  * - Eingangs-Schalter umschalten (Klick im Simulations-Modus)
  */
 @Component({
   selector: 'app-whiteboard',
-  imports: [AndGate, OrGate, NotGate, InputSwitch, OutputLed],
+  imports: [
+    AndGate, OrGate, NotGate, XorGate,
+    JkFlipflop, HalfAdder, FullAdder,
+    InputSwitch, OutputLed, ClockGen, TextLabel,
+  ],
   templateUrl: './whiteboard.html',
-  styleUrl: './whiteboard.scss',
+  styleUrl:    './whiteboard.scss',
 })
-export class Whiteboard {
+export class Whiteboard implements OnDestroy {
   // ─── Services ──────────────────────────────────────────────────────────────
-
-  private readonly dragState = inject(DragStateService);
+  private readonly dragState        = inject(DragStateService);
   private readonly simulationService = inject(SimulationService);
 
   // ─── DOM-Referenz ───────────────────────────────────────────────────────────
-
   @ViewChild('viewport') viewportRef!: ElementRef<HTMLDivElement>;
 
   // ─── Pan-Zustand ───────────────────────────────────────────────────────────
-
   panX = 0;
   panY = 0;
-  protected isPanning = false;
-  private panStartMouseX = 0;
-  private panStartMouseY = 0;
+  protected isPanning   = false;
+  private panStartMouseX  = 0;
+  private panStartMouseY  = 0;
   private panStartOffsetX = 0;
   private panStartOffsetY = 0;
 
   // ─── Werkzeug-Modus ────────────────────────────────────────────────────────
-
-  /** Aktives Werkzeug: 'pan' (Standard) oder 'wire' (Leitungen ziehen) */
   toolMode: ToolMode = 'pan';
 
   // ─── Leitungs-Zeichnen ─────────────────────────────────────────────────────
-
-  /** Zustand während des Leitungs-Zeichnens; null wenn keine Leitung begonnen */
   wireDrawing: WireDrawingState | null = null;
-
-  /** Aktueller Maus-Endpunkt der gerade gezogenen Leitung (logische Koordinaten) */
   tentativeX = 0;
   tentativeY = 0;
 
+  // ─── Gatter verschieben ────────────────────────────────────────────────────
+  private gateDragState: GateDragState | null = null;
+  /** true sobald die Maus sich >4px vom Klickpunkt entfernt hat */
+  private gateDragStarted = false;
+
   // ─── Schaltungs-Daten ──────────────────────────────────────────────────────
-
-  /** Alle platzierten Komponenten-Instanzen */
   gates: GateInstance[] = [];
-
-  /** Alle Leitungsverbindungen zwischen Komponenten */
   wires: WireConnection[] = [];
-
   private gateIdCounter = 0;
   private wireIdCounter = 0;
 
+  // ─── Auswahl ───────────────────────────────────────────────────────────────
+  /** ID des aktuell ausgewählten Bauteils (null = nichts ausgewählt) */
+  selectedGateId: string | null = null;
+
+  get selectedGate(): GateInstance | null {
+    return this.selectedGateId
+      ? (this.gates.find(g => g.id === this.selectedGateId) ?? null)
+      : null;
+  }
+
   // ─── Simulations-Modus ─────────────────────────────────────────────────────
-
-  /** Ob die Simulation gerade läuft */
   simulationMode = false;
-
-  /** Berechnete Signalzustände (wird bei jeder Änderung neu berechnet) */
   private signalStates = new Map<string, ComponentSignalState>();
+  /** setInterval-Handles für jeden Taktgeber (gateId → intervalId) */
+  private clockIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
-  // ─── Werkzeug-Wechsel (von Toolbar-Left) ───────────────────────────────────
-
-  /** Wird vom App-Component aufgerufen, wenn der Benutzer ein Werkzeug wählt */
+  // ─── Werkzeug-Wechsel ──────────────────────────────────────────────────────
   setToolMode(mode: ToolMode): void {
-    this.toolMode = mode;
-    // Angefangene Leitung abbrechen wenn Werkzeug wechselt
+    this.toolMode  = mode;
     this.wireDrawing = null;
   }
 
@@ -116,77 +132,179 @@ export class Whiteboard {
   toggleSimulation(): void {
     this.simulationMode = !this.simulationMode;
     if (this.simulationMode) {
+      this.startClockIntervals();
       this.recomputeSimulation();
     } else {
-      // Simulation stoppen: Signalzustände zurücksetzen
+      this.stopClockIntervals();
       this.signalStates.clear();
     }
+  }
+
+  // ─── Taktgeber-Intervalle ──────────────────────────────────────────────────
+
+  private startClockIntervals(): void {
+    for (const gate of this.gates) {
+      if (gate.type === 'clock-gen') {
+        this.startClockInterval(gate);
+      }
+    }
+  }
+
+  private startClockInterval(gate: GateInstance): void {
+    if (this.clockIntervals.has(gate.id)) return;
+    const period = Math.max(100, gate.clockPeriodMs ?? 1000);
+    const handle = setInterval(() => {
+      // Zustand toggeln und Simulation neu berechnen
+      this.gates = this.gates.map(g =>
+        g.id === gate.id ? { ...g, inputValue: !g.inputValue } : g
+      );
+      this.recomputeSimulation();
+    }, period);
+    this.clockIntervals.set(gate.id, handle);
+  }
+
+  private stopClockIntervals(): void {
+    for (const handle of this.clockIntervals.values()) {
+      clearInterval(handle);
+    }
+    this.clockIntervals.clear();
+  }
+
+  /** Muss bei Periodenänderung aufgerufen werden */
+  restartClockInterval(gate: GateInstance): void {
+    const handle = this.clockIntervals.get(gate.id);
+    if (handle !== undefined) clearInterval(handle);
+    this.clockIntervals.delete(gate.id);
+    if (this.simulationMode) this.startClockInterval(gate);
+  }
+
+  ngOnDestroy(): void {
+    this.stopClockIntervals();
+  }
+
+  // ─── Gatter-Eigenschaften aktualisieren ────────────────────────────────────
+
+  /**
+   * Aktualisiert beliebige Felder eines platzierten Bauteils.
+   * Wird vom Properties Panel über app.ts aufgerufen.
+   */
+  updateGate(changes: Partial<GateInstance> & { id: string }): void {
+    const periodChanged = changes.clockPeriodMs !== undefined;
+    this.gates = this.gates.map(g => {
+      if (g.id !== changes.id) return g;
+      const updated = { ...g, ...changes };
+      return updated;
+    });
+    // Taktgeber-Intervall neu starten wenn Periode geändert
+    if (periodChanged) {
+      const gate = this.gates.find(g => g.id === changes.id);
+      if (gate) this.restartClockInterval(gate);
+    }
+    if (this.simulationMode) this.recomputeSimulation();
+  }
+
+  /** Löscht ein Bauteil und alle zugehörigen Leitungen */
+  deleteGate(gateId: string): void {
+    // Taktgeber-Intervall stoppen
+    const handle = this.clockIntervals.get(gateId);
+    if (handle !== undefined) clearInterval(handle);
+    this.clockIntervals.delete(gateId);
+
+    this.gates = this.gates.filter(g => g.id !== gateId);
+    this.wires = this.wires.filter(
+      w => w.fromGateId !== gateId && w.toGateId !== gateId
+    );
+    if (this.selectedGateId === gateId) this.selectedGateId = null;
+    if (this.simulationMode) this.recomputeSimulation();
   }
 
   // ─── Maus-Events ───────────────────────────────────────────────────────────
 
   /**
-   * Haupt-Maus-Handler auf dem Whiteboard.
-   *
-   * Verzweigt je nach aktivem Werkzeug und Zustand:
-   * 1. Drag-Drop (Komponente aus Toolbar): Warten auf mouseup
-   * 2. Wire-Modus: Pin-Klick erkennen, Leitung starten/beenden
-   * 3. Pan-Modus: Panning starten
-   * 4. Simulation: Eingangs-Schalter umschalten
+   * Haupt-Maus-Handler auf dem Viewport-Div.
+   * Verzweigt nach Modus:
+   *  1. Gatter aus Toolbar wird gezogen → nur warten
+   *  2. Wire-Modus → Pin-Klick auswerten
+   *  3. Pan-Modus + Simulation → Eingangs-Schalter / Taktgeber togglen
+   *  4. Pan-Modus → Gatter-Klick (Auswahl/Drag) oder Panning starten
    */
   onMouseDown(event: MouseEvent): void {
     if (event.button !== 0) return;
     event.preventDefault();
 
-    // Wenn ein Gatter aus der Toolbar gezogen wird, nur auf mouseup warten
+    // Toolbar-Drag läuft → nur auf mouseup warten
     if (this.dragState.isDragging()) return;
 
-    const { logicalX, logicalY } = this.toLogical(event);
+    const { lx, ly } = this.toLogical(event);
 
-    // ── Wire-Modus ───────────────────────────────────────────────────────────
+    // ── Wire-Modus ──────────────────────────────────────────────────────────
     if (this.toolMode === 'wire') {
-      this.handleWireClick(logicalX, logicalY);
+      this.handleWireClick(lx, ly);
       return;
     }
 
-    // ── Simulations-Modus + Pan: Eingangs-Schalter umschalten ───────────────
+    // ── Simulation: Schalter / Taktgeber umschalten ─────────────────────────
     if (this.simulationMode) {
-      const toggled = this.tryToggleInputSwitch(logicalX, logicalY);
-      if (toggled) return;
+      if (this.tryToggleSwitch(lx, ly)) return;
     }
 
-    // ── Pan starten ─────────────────────────────────────────────────────────
-    this.isPanning = true;
-    this.panStartMouseX = event.clientX;
-    this.panStartMouseY = event.clientY;
-    this.panStartOffsetX = this.panX;
-    this.panStartOffsetY = this.panY;
+    // ── Gatter-Klick erkennen (Auswahl + Drag) ──────────────────────────────
+    const hitGate = this.findGateAt(lx, ly);
+    if (hitGate) {
+      this.selectedGateId = hitGate.id;
+      this.gateDragState  = {
+        gateId:      hitGate.id,
+        originX:     hitGate.x,
+        originY:     hitGate.y,
+        startMouseX: event.clientX,
+        startMouseY: event.clientY,
+      };
+      this.gateDragStarted = false;
+      return;
+    }
+
+    // ── Klick ins Leere → Auswahl aufheben, Panning starten ─────────────────
+    this.selectedGateId = null;
+    this.isPanning        = true;
+    this.panStartMouseX   = event.clientX;
+    this.panStartMouseY   = event.clientY;
+    this.panStartOffsetX  = this.panX;
+    this.panStartOffsetY  = this.panY;
   }
 
-  /** Aktualisiert Pan und Leitungs-Endpunkt während Mausbewegung */
   @HostListener('document:mousemove', ['$event'])
   onMouseMove(event: MouseEvent): void {
-    // Pan aktualisieren
+    // Panning
     if (this.isPanning) {
       this.panX = this.panStartOffsetX + (event.clientX - this.panStartMouseX);
       this.panY = this.panStartOffsetY + (event.clientY - this.panStartMouseY);
     }
 
-    // Leitungs-Endpunkt aktualisieren (für die gestrichelte Vorschau)
+    // Gatter verschieben
+    if (this.gateDragState) {
+      const dx = event.clientX - this.gateDragState.startMouseX;
+      const dy = event.clientY - this.gateDragState.startMouseY;
+      if (!this.gateDragStarted && Math.hypot(dx, dy) > 4) {
+        this.gateDragStarted = true;
+      }
+      if (this.gateDragStarted) {
+        const newX = this.gateDragState.originX + dx;
+        const newY = this.gateDragState.originY + dy;
+        this.gates = this.gates.map(g =>
+          g.id === this.gateDragState!.gateId ? { ...g, x: newX, y: newY } : g
+        );
+        if (this.simulationMode) this.recomputeSimulation();
+      }
+    }
+
+    // Leitungs-Vorschau aktualisieren
     if (this.wireDrawing) {
-      const { logicalX, logicalY } = this.toLogical(event);
-      this.tentativeX = logicalX;
-      this.tentativeY = logicalY;
+      const { lx, ly } = this.toLogical(event);
+      this.tentativeX = lx;
+      this.tentativeY = ly;
     }
   }
 
-  /**
-   * Haupt-mouseup-Handler (global auf dem Dokument).
-   *
-   * Behandelt:
-   * 1. Panning beenden
-   * 2. Gatter-Drop vom Drag-State
-   */
   @HostListener('document:mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
     // Panning beenden
@@ -195,101 +313,98 @@ export class Whiteboard {
       return;
     }
 
-    // Gatter aus Toolbar droppen
+    // Gatter-Drag beenden
+    if (this.gateDragState) {
+      this.gateDragState   = null;
+      this.gateDragStarted = false;
+      return;
+    }
+
+    // Gatter-Drop aus Toolbar
     if (!this.dragState.isDragging()) return;
 
     const viewport = this.viewportRef?.nativeElement;
     if (!viewport) { this.dragState.endDrag(); return; }
 
     const rect = viewport.getBoundingClientRect();
-    const isOnWhiteboard =
+    const onBoard =
       event.clientX >= rect.left && event.clientX <= rect.right &&
       event.clientY >= rect.top  && event.clientY <= rect.bottom;
 
-    if (isOnWhiteboard) {
-      const gateType = this.dragState.gateType() as GateType;
-      if (gateType) {
-        const viewX = event.clientX - rect.left;
-        const viewY = event.clientY - rect.top;
-        this.placeGate(gateType, viewX - this.panX, viewY - this.panY);
+    if (onBoard) {
+      const type = this.dragState.gateType() as GateType;
+      if (type) {
+        const vx = event.clientX - rect.left;
+        const vy = event.clientY - rect.top;
+        this.placeGate(type, vx - this.panX, vy - this.panY);
       }
     }
     this.dragState.endDrag();
   }
 
+  /** Del-Taste → ausgewähltes Bauteil löschen */
+  @HostListener('document:keydown.delete')
+  @HostListener('document:keydown.backspace')
+  onDeleteKey(): void {
+    if (this.selectedGateId) this.deleteGate(this.selectedGateId);
+  }
+
   // ─── Leitungs-Logik ────────────────────────────────────────────────────────
 
-  /**
-   * Verarbeitet einen Klick im Wire-Modus.
-   *
-   * Phase 1: Klick auf Ausgangs-Pin → beginnt Leitung
-   * Phase 2: Klick auf Eingangs-Pin → beendet Leitung und speichert Verbindung
-   * Klick ins Leere → bricht angefangene Leitung ab
-   */
-  private handleWireClick(logicalX: number, logicalY: number): void {
-    const nearPin = this.findNearestPin(logicalX, logicalY);
+  private handleWireClick(lx: number, ly: number): void {
+    const near = this.findNearestPin(lx, ly);
 
     if (!this.wireDrawing) {
-      // Phase 1: Starte Leitung an Ausgangs-Pin
-      if (nearPin && nearPin.pinType === 'output') {
-        const pos = this.getPinWorldPos(nearPin.gate, 'output', nearPin.pinIndex);
+      // Phase 1: Ausgangs-Pin anklicken → Leitung starten
+      if (near?.pinType === 'output') {
+        const pos = getPinWorldPos(near.gate, 'output', near.pinIndex);
         this.wireDrawing = {
-          fromGateId: nearPin.gate.id,
-          fromPinIndex: nearPin.pinIndex,
-          x1: pos.x,
-          y1: pos.y,
+          fromGateId:   near.gate.id,
+          fromPinIndex: near.pinIndex,
+          x1: pos.x, y1: pos.y,
         };
         this.tentativeX = pos.x;
         this.tentativeY = pos.y;
       }
     } else {
-      // Phase 2: Beende Leitung an Eingangs-Pin
-      if (nearPin && nearPin.pinType === 'input') {
-        // Keine Verbindung auf sich selbst erlauben
-        if (nearPin.gate.id !== this.wireDrawing.fromGateId) {
-          // Prüfe ob dieser Eingangs-Pin bereits verbunden ist
-          const alreadyConnected = this.wires.some(
-            (w) => w.toGateId === nearPin.gate.id && w.toPinIndex === nearPin.pinIndex
-          );
-          if (!alreadyConnected) {
-            const newWire: WireConnection = {
-              id: `wire-${++this.wireIdCounter}`,
-              fromGateId: this.wireDrawing.fromGateId,
-              fromPinIndex: this.wireDrawing.fromPinIndex,
-              toGateId: nearPin.gate.id,
-              toPinIndex: nearPin.pinIndex,
-            };
-            this.wires = [...this.wires, newWire];
-            if (this.simulationMode) this.recomputeSimulation();
-          }
+      // Phase 2: Eingangs-Pin anklicken → Leitung abschließen
+      if (near?.pinType === 'input' && near.gate.id !== this.wireDrawing.fromGateId) {
+        const alreadyUsed = this.wires.some(
+          w => w.toGateId === near.gate.id && w.toPinIndex === near.pinIndex
+        );
+        if (!alreadyUsed) {
+          const endPos = getPinWorldPos(near.gate, 'input', near.pinIndex);
+          const newWire: WireConnection = {
+            id:           `wire-${++this.wireIdCounter}`,
+            fromGateId:   this.wireDrawing.fromGateId,
+            fromPinIndex: this.wireDrawing.fromPinIndex,
+            toGateId:     near.gate.id,
+            toPinIndex:   near.pinIndex,
+            // Orthogonale Wegpunkte für rechtwinklige Leitungsführung
+            points: computeOrthogonalWaypoints(
+              this.wireDrawing.x1, this.wireDrawing.y1,
+              endPos.x, endPos.y
+            ),
+          };
+          this.wires = [...this.wires, newWire];
+          if (this.simulationMode) this.recomputeSimulation();
         }
       }
-      // Leitung beenden (egal ob erfolgreich oder nicht)
       this.wireDrawing = null;
     }
   }
 
-  // ─── Simulations-Logik ─────────────────────────────────────────────────────
+  // ─── Simulations-Hilfsmethoden ─────────────────────────────────────────────
 
-  /** Startet Simulation neu und berechnet alle Signalzustände */
   private recomputeSimulation(): void {
     this.signalStates = this.simulationService.computeSignals(this.gates, this.wires);
   }
 
-  /**
-   * Schaltet einen Eingangs-Schalter um, wenn der Klick auf einen trifft.
-   * Gibt true zurück wenn ein Schalter getroffen wurde.
-   */
-  private tryToggleInputSwitch(logicalX: number, logicalY: number): boolean {
-    // Input-Switch-Abmessungen: Breite ~70px (58 Körper + 12 Draht), Höhe 52px
+  private tryToggleSwitch(lx: number, ly: number): boolean {
     for (const gate of this.gates) {
       if (gate.type !== 'input') continue;
-      if (
-        logicalX >= gate.x && logicalX <= gate.x + 70 &&
-        logicalY >= gate.y && logicalY <= gate.y + 52
-      ) {
-        // Zustand umschalten (immutable update für Change Detection)
-        this.gates = this.gates.map((g) =>
+      if (isPointInGate(lx, ly, gate)) {
+        this.gates = this.gates.map(g =>
           g.id === gate.id ? { ...g, inputValue: !g.inputValue } : g
         );
         this.recomputeSimulation();
@@ -299,141 +414,142 @@ export class Whiteboard {
     return false;
   }
 
-  // ─── Komponenten platzieren ────────────────────────────────────────────────
+  // ─── Bauteil platzieren ────────────────────────────────────────────────────
 
-  private placeGate(type: GateType, logicalX: number, logicalY: number): void {
-    // Gatter am Drop-Punkt zentrieren
-    const offsets = GATE_PIN_OFFSETS[type];
-    const totalPins = offsets.inputs.length + offsets.outputs.length;
-    const centerX = totalPins > 0 ? 38 : 30;
+  private placeGate(type: GateType, lx: number, ly: number): void {
+    const gate = createGateInstance(`gate-${++this.gateIdCounter}`, type, 0, 0);
+    const dim  = getGateDimensions(gate);
+    gate.x = Math.round(lx - dim.w / 2);
+    gate.y = Math.round(ly - dim.h / 2);
+    this.gates = [...this.gates, gate];
 
-    const newGate: GateInstance = {
-      id: `gate-${++this.gateIdCounter}`,
-      type,
-      x: logicalX - centerX,
-      y: logicalY - 26,
-      inputValue: false,
-    };
-    this.gates = [...this.gates, newGate];
+    // Neuen Taktgeber sofort starten wenn Simulation läuft
+    if (type === 'clock-gen' && this.simulationMode) {
+      this.startClockInterval(gate);
+    }
     if (this.simulationMode) this.recomputeSimulation();
   }
 
   // ─── Pin-Erkennung ─────────────────────────────────────────────────────────
 
-  /**
-   * Sucht den nächsten Pin im Klick-Radius um (logicalX, logicalY).
-   * Gibt null zurück wenn kein Pin in Reichweite ist.
-   */
   private findNearestPin(
-    logicalX: number,
-    logicalY: number
+    lx: number, ly: number
   ): { gate: GateInstance; pinType: 'input' | 'output'; pinIndex: number } | null {
     for (const gate of this.gates) {
-      const offsets = GATE_PIN_OFFSETS[gate.type];
+      const offsets = getGatePinOffsets(gate);
 
-      // Ausgangs-Pins prüfen
       for (let i = 0; i < offsets.outputs.length; i++) {
-        const pos = {
-          x: gate.x + offsets.outputs[i].x,
-          y: gate.y + offsets.outputs[i].y,
-        };
-        if (this.dist(logicalX, logicalY, pos.x, pos.y) <= PIN_HIT_RADIUS) {
+        const pos = getPinWorldPos(gate, 'output', i);
+        if (this.dist(lx, ly, pos.x, pos.y) <= PIN_HIT_RADIUS)
           return { gate, pinType: 'output', pinIndex: i };
-        }
       }
-
-      // Eingangs-Pins prüfen
       for (let i = 0; i < offsets.inputs.length; i++) {
-        const pos = {
-          x: gate.x + offsets.inputs[i].x,
-          y: gate.y + offsets.inputs[i].y,
-        };
-        if (this.dist(logicalX, logicalY, pos.x, pos.y) <= PIN_HIT_RADIUS) {
+        const pos = getPinWorldPos(gate, 'input', i);
+        if (this.dist(lx, ly, pos.x, pos.y) <= PIN_HIT_RADIUS)
           return { gate, pinType: 'input', pinIndex: i };
-        }
       }
     }
     return null;
   }
 
-  /** Berechnet die Weltposition eines Pins */
-  getPinWorldPos(
-    gate: GateInstance,
-    pinType: 'input' | 'output',
-    pinIndex: number
-  ): { x: number; y: number } {
-    const offsets = GATE_PIN_OFFSETS[gate.type];
-    const pin =
-      pinType === 'input' ? offsets.inputs[pinIndex] : offsets.outputs[pinIndex];
-    return { x: gate.x + pin.x, y: gate.y + pin.y };
+  private findGateAt(lx: number, ly: number): GateInstance | null {
+    // Rückwärts iterieren damit oberstes Bauteil zuerst getroffen wird
+    for (let i = this.gates.length - 1; i >= 0; i--) {
+      if (isPointInGate(lx, ly, this.gates[i])) return this.gates[i];
+    }
+    return null;
   }
 
   // ─── Template-Hilfsmethoden ────────────────────────────────────────────────
-
-  getGridBackgroundPosition(): string {
-    return `${this.panX}px ${this.panY}px`;
-  }
 
   getGatesLayerTransform(): string {
     return `translate(${this.panX}px, ${this.panY}px)`;
   }
 
-  /** Gibt den Ausgangs-Signalzustand einer Komponente zurück */
-  getSignalOutput(gateId: string): boolean | null {
-    return this.signalStates.get(gateId)?.outputSignals[0] ?? null;
+  getGateTransform(gate: GateInstance): string {
+    return gate.rotation !== 0 ? `rotate(${gate.rotation}deg)` : '';
   }
 
-  /** Gibt den Eingangs-Signalzustand einer Komponente zurück (für Output-LED) */
-  getSignalInput(gateId: string): boolean | null {
-    return this.signalStates.get(gateId)?.inputSignals[0] ?? null;
+  /** CSS-Filter für die Gehäuse-Farbe */
+  getGateColorStyle(gate: GateInstance): string {
+    const map: Record<GateColor, string> = {
+      default: '',
+      yellow:  'brightness(1) sepia(1) saturate(3) hue-rotate(10deg)',
+      green:   'brightness(1) sepia(1) saturate(4) hue-rotate(80deg)',
+      red:     'brightness(1) sepia(1) saturate(4) hue-rotate(320deg)',
+      orange:  'brightness(1) sepia(1) saturate(4) hue-rotate(340deg) brightness(1.1)',
+    };
+    const f = map[gate.color] ?? '';
+    return f ? `filter: ${f}` : '';
   }
 
-  /**
-   * Berechnet Start- und Endpunkt einer gespeicherten Leitung für SVG-Rendering.
-   * Gibt null zurück wenn ein Gate nicht gefunden wird.
-   */
-  getWireCoords(
-    wire: WireConnection
-  ): { x1: number; y1: number; x2: number; y2: number } | null {
-    const fromGate = this.gates.find((g) => g.id === wire.fromGateId);
-    const toGate = this.gates.find((g) => g.id === wire.toGateId);
-    if (!fromGate || !toGate) return null;
+  /** Erzeugt den SVG-Punkte-String für eine Polyline-Leitung */
+  getWirePointsString(wire: WireConnection): string | null {
+    const from = this.gates.find(g => g.id === wire.fromGateId);
+    const to   = this.gates.find(g => g.id === wire.toGateId);
+    if (!from || !to) return null;
 
-    const start = this.getPinWorldPos(fromGate, 'output', wire.fromPinIndex);
-    const end = this.getPinWorldPos(toGate, 'input', wire.toPinIndex);
-    return { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
+    const start = getPinWorldPos(from, 'output', wire.fromPinIndex);
+    const end   = getPinWorldPos(to,   'input',  wire.toPinIndex);
+
+    if (wire.points.length === 0) {
+      // Gerade Linie
+      return `${start.x},${start.y} ${end.x},${end.y}`;
+    }
+
+    // Rechtwinklige Führung mit Wegpunkten
+    const pts = [start, ...wire.points, end];
+    return pts.map(p => `${p.x},${p.y}`).join(' ');
   }
 
-  /**
-   * Gibt an ob eine Leitung ein HIGH-Signal führt (für grüne Farbe).
-   */
+  /** Tentative-Leitung als SVG-Punkte-String (orthogonal) */
+  getTentativePointsString(): string {
+    if (!this.wireDrawing) return '';
+    const x1 = this.wireDrawing.x1;
+    const y1 = this.wireDrawing.y1;
+    const midX = Math.round((x1 + this.tentativeX) / 2);
+    return `${x1},${y1} ${midX},${y1} ${midX},${this.tentativeY} ${this.tentativeX},${this.tentativeY}`;
+  }
+
   isWireHigh(wire: WireConnection): boolean {
-    return (
-      this.signalStates.get(wire.fromGateId)?.outputSignals[wire.fromPinIndex] === true
-    );
+    return this.signalStates.get(wire.fromGateId)
+      ?.outputSignals[wire.fromPinIndex] === true;
   }
 
-  /** Ob die aktive Leitung gezeichnet wird */
-  get isDrawingWire(): boolean {
-    return this.wireDrawing !== null;
+  getSignalOutput(gateId: string, pinIndex = 0): boolean | null {
+    return this.signalStates.get(gateId)?.outputSignals[pinIndex] ?? null;
   }
 
-  get isDraggingGate(): boolean {
-    return this.dragState.isDragging();
+  getSignalInput(gateId: string, pinIndex = 0): boolean | null {
+    return this.signalStates.get(gateId)?.inputSignals[pinIndex] ?? null;
   }
+
+  getPinWorldPosForTemplate(
+    gate: GateInstance,
+    pinType: 'input' | 'output',
+    pinIndex: number
+  ): { x: number; y: number } {
+    return getPinWorldPos(gate, pinType, pinIndex);
+  }
+
+  getPinOffsets(gate: GateInstance) {
+    return getGatePinOffsets(gate);
+  }
+
+  get isDraggingGate(): boolean { return this.dragState.isDragging(); }
+  get isDrawingWire(): boolean  { return this.wireDrawing !== null; }
 
   // ─── Koordinaten-Hilfe ─────────────────────────────────────────────────────
 
-  /** Konvertiert Bildschirm-Koordinaten eines MouseEvent in logische Canvas-Koordinaten */
-  private toLogical(event: MouseEvent): { logicalX: number; logicalY: number } {
+  private toLogical(event: MouseEvent): { lx: number; ly: number } {
     const rect = this.viewportRef.nativeElement.getBoundingClientRect();
     return {
-      logicalX: event.clientX - rect.left - this.panX,
-      logicalY: event.clientY - rect.top - this.panY,
+      lx: event.clientX - rect.left - this.panX,
+      ly: event.clientY - rect.top  - this.panY,
     };
   }
 
   private dist(x1: number, y1: number, x2: number, y2: number): number {
-    return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
+    return Math.hypot(x1 - x2, y1 - y2);
   }
 }

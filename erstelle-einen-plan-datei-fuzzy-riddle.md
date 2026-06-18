@@ -80,16 +80,6 @@ Aus einem Screenshot von Version 0.6.4 (serieller_Addierer.sim) lassen sich folg
 
 ---
 
-## 2. Zielbeschreibung der neuen Webanwendung
-
-Eine moderne, browserbasierte Neuentwicklung von LogikSim, die:
-- ohne Installation direkt im Browser läuft (Schüler brauchen nur eine URL)
-- Lehrkräfte unterstützt beim Erstellen, Verteilen und Bewerten von Aufgaben
-- einen sicheren Prüfungsmodus mit Einschränkungen bietet
-- professionelle UX-Standards erfüllt (Keyboard Shortcuts, Undo/Redo, etc.)
-- offen und wartbar bleibt (kein Vendor Lock-in)
-
----
 
 ## 3. Technologie-Anforderungen
 

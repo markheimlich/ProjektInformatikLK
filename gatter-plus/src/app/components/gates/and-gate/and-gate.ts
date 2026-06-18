@@ -19,10 +19,14 @@ import { Component, Input } from '@angular/core';
 export class AndGate {
   /** Kompakter Toolbar-Modus (kleiner) */
   @Input() toolbarMode = false;
-
-  /**
-   * Aktueller Ausgangs-Signal-Zustand (für Simulations-Visualisierung).
-   * null = unbekannt, false = LOW, true = HIGH
-   */
+  /** Variable Eingangsanzahl (2–8, Standard: 2) */
+  @Input() inputCount = 2;
   @Input() signalOutput: boolean | null = null;
+
+  get gateHeight(): number {
+    return this.toolbarMode ? 44 : Math.max(52, (this.inputCount + 1) * 16 + 8);
+  }
+  get wireArray(): number[] {
+    return Array.from({ length: this.toolbarMode ? 2 : this.inputCount }, (_, i) => i);
+  }
 }

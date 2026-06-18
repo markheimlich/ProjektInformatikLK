@@ -45,8 +45,19 @@
 
 .placed-gate {
   position: absolute;
-  /* Komponenten selbst sind nicht interaktiv (Viewport übernimmt alle Events) */
   pointer-events: none;
+  transform-origin: center;
+}
+
+/* Ausgewähltes Bauteil: blauer Rahmen */
+.placed-gate.selected::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 2px solid #3b82f6;
+  border-radius: 4px;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 /* ── SVG-Leitungs-Layer ──────────────────────────────────────────────────── */

@@ -1,66 +1,96 @@
-<!-- Obere Toolbar: Titel + Gatter-Palette + I/O + Simulations-Toggle -->
+<!-- Obere Toolbar: Titel + Paletten (Gatter, Kombi, FF, I/O) + Simulations-Toggle -->
 <header class="toolbar-top">
 
   <div class="app-title">GatterPLUS</div>
 
   <div class="divider"></div>
 
-  <!-- Gatter-Palette -->
+  <!-- Gatter-Palette: AND, OR, NOT, XOR -->
   <div class="palette-group">
     <span class="group-label">Gatter</span>
     <div class="palette-items">
-
-      <!-- AND-Gatter -->
-      <div class="palette-item" title="UND-Gatter (AND) ziehen" (mousedown)="onGateMouseDown($event, 'and')">
+      <div class="palette-item" title="UND-Gatter (AND)" (mousedown)="onGateMouseDown($event, 'and')">
         <app-and-gate [toolbarMode]="true"></app-and-gate>
         <span class="item-name">AND</span>
       </div>
-
-      <!-- OR-Gatter -->
-      <div class="palette-item" title="ODER-Gatter (OR) ziehen" (mousedown)="onGateMouseDown($event, 'or')">
+      <div class="palette-item" title="ODER-Gatter (OR)" (mousedown)="onGateMouseDown($event, 'or')">
         <app-or-gate [toolbarMode]="true"></app-or-gate>
         <span class="item-name">OR</span>
       </div>
-
-      <!-- NOT-Gatter -->
-      <div class="palette-item" title="NICHT-Gatter (NOT) ziehen" (mousedown)="onGateMouseDown($event, 'not')">
+      <div class="palette-item" title="NICHT-Gatter (NOT)" (mousedown)="onGateMouseDown($event, 'not')">
         <app-not-gate [toolbarMode]="true"></app-not-gate>
         <span class="item-name">NOT</span>
       </div>
-
+      <div class="palette-item" title="Exklusiv-ODER-Gatter (XOR)" (mousedown)="onGateMouseDown($event, 'xor')">
+        <app-xor-gate [toolbarMode]="true"></app-xor-gate>
+        <span class="item-name">XOR</span>
+      </div>
     </div>
   </div>
 
   <div class="divider"></div>
 
-  <!-- I/O-Palette -->
+  <!-- Kombinatorik: Halbaddierer, Volladdierer -->
+  <div class="palette-group">
+    <span class="group-label">Kombinatorik</span>
+    <div class="palette-items">
+      <div class="palette-item" title="Halbaddierer (HA)" (mousedown)="onGateMouseDown($event, 'half-adder')">
+        <app-half-adder [toolbarMode]="true"></app-half-adder>
+        <span class="item-name">HA</span>
+      </div>
+      <div class="palette-item" title="Volladdierer (VA)" (mousedown)="onGateMouseDown($event, 'full-adder')">
+        <app-full-adder [toolbarMode]="true"></app-full-adder>
+        <span class="item-name">VA</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Flip-Flops -->
+  <div class="palette-group">
+    <span class="group-label">Flip-Flop</span>
+    <div class="palette-items">
+      <div class="palette-item" title="JK-Flip-Flop" (mousedown)="onGateMouseDown($event, 'jk-ff')">
+        <app-jk-flipflop [toolbarMode]="true"></app-jk-flipflop>
+        <span class="item-name">JK-FF</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Ein-/Ausgabe + Sonderkomponenten -->
   <div class="palette-group">
     <span class="group-label">Ein/Ausgang</span>
     <div class="palette-items">
-
-      <!-- Eingangs-Schalter -->
-      <div class="palette-item" title="Eingangs-Schalter ziehen (gibt Signal 0 oder 1 aus)" (mousedown)="onGateMouseDown($event, 'input')">
+      <div class="palette-item" title="Eingangs-Schalter (gibt 0 oder 1 aus)" (mousedown)="onGateMouseDown($event, 'input')">
         <app-input-switch [toolbarMode]="true"></app-input-switch>
         <span class="item-name">Eingang</span>
       </div>
-
-      <!-- Ausgangs-LED -->
-      <div class="palette-item" title="Ausgangs-LED ziehen (zeigt empfangenes Signal an)" (mousedown)="onGateMouseDown($event, 'output')">
+      <div class="palette-item" title="Ausgangs-LED (zeigt Signal an)" (mousedown)="onGateMouseDown($event, 'output')">
         <app-output-led [toolbarMode]="true"></app-output-led>
         <span class="item-name">Ausgang</span>
       </div>
-
+      <div class="palette-item" title="Taktgeber – erzeugt periodisches Signal" (mousedown)="onGateMouseDown($event, 'clock-gen')">
+        <app-clock-gen [toolbarMode]="true"></app-clock-gen>
+        <span class="item-name">Takt</span>
+      </div>
+      <div class="palette-item" title="Beschriftungs-Label" (mousedown)="onGateMouseDown($event, 'text-label')">
+        <app-text-label [toolbarMode]="true"></app-text-label>
+        <span class="item-name">Label</span>
+      </div>
     </div>
   </div>
 
   <!-- Spacer schiebt Simulations-Button nach rechts -->
   <div class="spacer"></div>
 
-  <!-- Simulations-Toggle: Start / Stop -->
+  <!-- Simulations-Toggle -->
   <button
     class="sim-btn"
     [class.active]="simulationMode"
-    title="{{ simulationMode ? 'Simulation stoppen (F5)' : 'Simulation starten (F5)' }}"
+    title="{{ simulationMode ? 'Simulation stoppen' : 'Simulation starten (F5)' }}"
     (click)="simulationToggle.emit()"
   >
     {{ simulationMode ? '⏹ Stop' : '▶ Start' }}

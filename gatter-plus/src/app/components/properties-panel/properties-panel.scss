@@ -1,0 +1,159 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  width: 200px;
+  flex-shrink: 0;
+  background: #f8fafc;
+  border-left: 1px solid #e2e8f0;
+  overflow-y: auto;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.gate-type {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #ef4444;
+  padding: 2px 4px;
+  border-radius: 4px;
+
+  &:hover {
+    background: #fee2e2;
+  }
+}
+
+.section {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.section-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.rotation-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.rot-btn {
+  flex: 1;
+  padding: 4px 2px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  color: #475569;
+
+  &:hover {
+    background: #e2e8f0;
+  }
+
+  &.active {
+    background: #dbeafe;
+    border-color: #3b82f6;
+    color: #1d4ed8;
+    font-weight: 700;
+  }
+}
+
+.color-swatches {
+  display: flex;
+  gap: 6px;
+}
+
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+
+  &.active {
+    border-color: #1e293b;
+    transform: scale(1.2);
+  }
+}
+
+.color-default { background: #ffffff; border: 2px solid #cbd5e1; }
+.color-yellow  { background: #fde047; }
+.color-green   { background: #4ade80; }
+.color-red     { background: #f87171; }
+.color-orange  { background: #fb923c; }
+
+.input-count-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 16px;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: #e2e8f0;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  }
+}
+
+.count-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  min-width: 24px;
+  text-align: center;
+}
+
+.period-input,
+.label-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #1e293b;
+  background: #fff;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: 2px solid #3b82f6;
+    border-color: transparent;
+  }
+}

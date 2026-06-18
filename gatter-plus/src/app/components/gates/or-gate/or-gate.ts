@@ -18,5 +18,13 @@ import { Component, Input } from '@angular/core';
 })
 export class OrGate {
   @Input() toolbarMode = false;
+  @Input() inputCount = 2;
   @Input() signalOutput: boolean | null = null;
+
+  get gateHeight(): number {
+    return this.toolbarMode ? 44 : Math.max(52, (this.inputCount + 1) * 16 + 8);
+  }
+  get wireArray(): number[] {
+    return Array.from({ length: this.toolbarMode ? 2 : this.inputCount }, (_, i) => i);
+  }
 }

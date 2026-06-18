@@ -1,23 +1,30 @@
 <!-- GatterPLUS Haupt-Layout -->
 <div class="app-layout">
 
-  <!-- Obere Toolbar: Gatter-Palette + Simulations-Toggle -->
+  <!-- Obere Toolbar: Paletten + Simulations-Toggle -->
   <app-toolbar-top
     [simulationMode]="simulationMode"
     (simulationToggle)="onSimulationToggle()"
   ></app-toolbar-top>
 
-  <!-- Hauptbereich: Werkzeug-Toolbar + Whiteboard -->
+  <!-- Hauptbereich: linke Toolbar + Whiteboard + Properties Panel -->
   <div class="main-area">
 
-    <!-- Linke Toolbar: Werkzeug-Wahl -->
+    <!-- Linke Toolbar: Pan / Leitung -->
     <app-toolbar-left
       [activeTool]="activeTool"
       (toolSelected)="onToolSelected($event)"
     ></app-toolbar-left>
 
-    <!-- Das Whiteboard -->
+    <!-- Whiteboard: Schaltkreis-Editor -->
     <app-whiteboard></app-whiteboard>
+
+    <!-- Properties Panel: erscheint wenn ein Bauteil angeklickt wurde -->
+    <app-properties-panel
+      [selectedGate]="selectedGate"
+      (gateChange)="onGateChange($event)"
+      (gateDelete)="onGateDelete($event)"
+    ></app-properties-panel>
 
   </div>
 

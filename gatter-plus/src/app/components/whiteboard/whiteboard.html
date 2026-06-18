@@ -1,9 +1,9 @@
 <!--
   Whiteboard-Layer-Struktur (unten → oben):
-  1. whiteboard-viewport  – weißer Hintergrund, empfängt alle Maus-Events
-  2. grid-svg             – SVG-Raster (zuverlässiger als CSS background-image)
-  3. gates-layer          – platzierte Komponenten (CSS transform)
-  4. wires-layer (SVG)    – Leitungen (SVG lines)
+  1. whiteboard-viewport  – Hintergrund, empfängt alle Maus-Events
+  2. grid-svg             – SVG-Raster (scrollt mit panX/panY)
+  3. gates-layer          – platzierte Bauteile (CSS transform für Pan)
+  4. wires-layer (SVG)    – Leitungen als Polylines (rechtwinklig)
   5. pins-layer           – Pin-Highlights im Wire-Modus
 -->
 <div
@@ -16,44 +16,74 @@
 >
 
   <!-- ── Raster via SVG-Pattern ────────────────────────────────────────── -->
-  <!--
-    SVG-Pattern ist die zuverlässigste Methode für ein scrollendes Raster.
-    [attr.x] und [attr.y] auf dem <pattern> verschieben das Muster mit dem Pan-Versatz.
-    panX % 40: Modulo 40 hält den Offset innerhalb einer Gitter-Zelle (40px).
-  -->
   <svg class="grid-svg" aria-hidden="true">
     <defs>
       <pattern
         id="wb-grid"
-        width="40"
-        height="40"
+        width="40" height="40"
         patternUnits="userSpaceOnUse"
         [attr.x]="panX % 40"
         [attr.y]="panY % 40"
       >
-        <!-- Obere horizontale Linie der Zelle -->
         <line x1="0" y1="0" x2="40" y2="0" stroke="#c0c8d4" stroke-width="1"/>
-        <!-- Linke vertikale Linie der Zelle -->
         <line x1="0" y1="0" x2="0" y2="40" stroke="#c0c8d4" stroke-width="1"/>
       </pattern>
     </defs>
-    <!-- Füllt den gesamten Viewport mit dem Raster-Muster -->
     <rect width="100%" height="100%" fill="url(#wb-grid)"/>
   </svg>
 
   <!-- ── Komponenten-Layer ──────────────────────────────────────────────── -->
   <div class="gates-layer" [style.transform]="getGatesLayerTransform()">
     @for (gate of gates; track gate.id) {
-      <div class="placed-gate" [style.left.px]="gate.x" [style.top.px]="gate.y">
+
+      <div
+        class="placed-gate"
+        [style.left.px]="gate.x"
+        [style.top.px]="gate.y"
+        [style.transform]="getGateTransform(gate)"
+        [class.selected]="gate.id === selectedGateId"
+      >
 
         @if (gate.type === 'and') {
-          <app-and-gate [signalOutput]="simulationMode ? getSignalOutput(gate.id) : null"></app-and-gate>
+          <app-and-gate
+            [inputCount]="gate.inputCount"
+            [signalOutput]="simulationMode ? getSignalOutput(gate.id) : null"
+          ></app-and-gate>
         }
         @if (gate.type === 'or') {
-          <app-or-gate [signalOutput]="simulationMode ? getSignalOutput(gate.id) : null"></app-or-gate>
+          <app-or-gate
+            [inputCount]="gate.inputCount"
+            [signalOutput]="simulationMode ? getSignalOutput(gate.id) : null"
+          ></app-or-gate>
         }
         @if (gate.type === 'not') {
-          <app-not-gate [signalOutput]="simulationMode ? getSignalOutput(gate.id) : null"></app-not-gate>
+          <app-not-gate
+            [signalOutput]="simulationMode ? getSignalOutput(gate.id) : null"
+          ></app-not-gate>
+        }
+        @if (gate.type === 'xor') {
+          <app-xor-gate
+            [inputCount]="gate.inputCount"
+            [signalOutput]="simulationMode ? getSignalOutput(gate.id) : null"
+          ></app-xor-gate>
+        }
+        @if (gate.type === 'jk-ff') {
+          <app-jk-flipflop
+            [signalOutputQ]="simulationMode ? getSignalOutput(gate.id, 0) : null"
+            [signalOutputQBar]="simulationMode ? getSignalOutput(gate.id, 1) : null"
+          ></app-jk-flipflop>
+        }
+        @if (gate.type === 'half-adder') {
+          <app-half-adder
+            [signalOutputS]="simulationMode ? getSignalOutput(gate.id, 0) : null"
+            [signalOutputC]="simulationMode ? getSignalOutput(gate.id, 1) : null"
+          ></app-half-adder>
+        }
+        @if (gate.type === 'full-adder') {
+          <app-full-adder
+            [signalOutputS]="simulationMode ? getSignalOutput(gate.id, 0) : null"
+            [signalOutputCout]="simulationMode ? getSignalOutput(gate.id, 1) : null"
+          ></app-full-adder>
         }
         @if (gate.type === 'input') {
           <app-input-switch
@@ -66,20 +96,30 @@
             [signalInput]="simulationMode ? getSignalInput(gate.id) : null"
           ></app-output-led>
         }
+        @if (gate.type === 'clock-gen') {
+          <app-clock-gen
+            [value]="gate.inputValue ?? false"
+            [periodMs]="gate.clockPeriodMs ?? 1000"
+          ></app-clock-gen>
+        }
+        @if (gate.type === 'text-label') {
+          <app-text-label
+            [label]="gate.label ?? 'Label'"
+          ></app-text-label>
+        }
 
       </div>
     }
   </div>
 
-  <!-- ── SVG-Leitungs-Layer ─────────────────────────────────────────────── -->
+  <!-- ── SVG-Leitungs-Layer (rechtwinklige Polylines) ──────────────────── -->
   <svg class="wires-layer" [style.transform]="getGatesLayerTransform()">
 
     @for (wire of wires; track wire.id) {
-      @let coords = getWireCoords(wire);
-      @if (coords) {
-        <line
-          [attr.x1]="coords.x1" [attr.y1]="coords.y1"
-          [attr.x2]="coords.x2" [attr.y2]="coords.y2"
+      @let pts = getWirePointsString(wire);
+      @if (pts) {
+        <polyline
+          [attr.points]="pts"
           class="wire-line"
           [class.wire-high]="simulationMode && isWireHigh(wire)"
           [class.wire-low]="simulationMode && !isWireHigh(wire)"
@@ -87,11 +127,10 @@
       }
     }
 
-    <!-- Vorschau-Leitung (gestrichelt, während Leitung gezogen wird) -->
+    <!-- Vorschau-Leitung (orthogonal, gestrichelt) -->
     @if (wireDrawing) {
-      <line
-        [attr.x1]="wireDrawing.x1" [attr.y1]="wireDrawing.y1"
-        [attr.x2]="tentativeX"     [attr.y2]="tentativeY"
+      <polyline
+        [attr.points]="getTentativePointsString()"
         class="wire-tentative"
       />
     }
@@ -103,26 +142,26 @@
     <div class="pins-layer" [style.transform]="getGatesLayerTransform()">
       @for (gate of gates; track gate.id) {
 
+        @let offsets = getPinOffsets(gate);
+
         <!-- Ausgangs-Pins: grüne Punkte -->
-        @let outPins = gate.type === 'output' ? [] : [{x:76,y:26}];
-        @for (pin of outPins; track $index) {
-          <div class="pin-dot output-pin"
-            [style.left.px]="gate.x + pin.x - 5"
-            [style.top.px]="gate.y + pin.y - 5"
-            [class.drawing-start]="wireDrawing?.fromGateId === gate.id"
+        @for (pin of offsets.outputs; track $index) {
+          @let outPos = getPinWorldPosForTemplate(gate, 'output', $index);
+          <div
+            class="pin-dot output-pin"
+            [style.left.px]="outPos.x - 5"
+            [style.top.px]="outPos.y - 5"
+            [class.drawing-start]="wireDrawing?.fromGateId === gate.id && wireDrawing?.fromPinIndex === $index"
           ></div>
         }
 
         <!-- Eingangs-Pins: blaue Punkte -->
-        @let inPins = gate.type === 'and' ? [{x:0,y:18},{x:0,y:34}]
-                    : gate.type === 'or'  ? [{x:0,y:18},{x:0,y:34}]
-                    : gate.type === 'not' ? [{x:0,y:26}]
-                    : gate.type === 'output' ? [{x:0,y:26}]
-                    : [];
-        @for (pin of inPins; track $index) {
-          <div class="pin-dot input-pin"
-            [style.left.px]="gate.x + pin.x - 5"
-            [style.top.px]="gate.y + pin.y - 5"
+        @for (pin of offsets.inputs; track $index) {
+          @let inPos = getPinWorldPosForTemplate(gate, 'input', $index);
+          <div
+            class="pin-dot input-pin"
+            [style.left.px]="inPos.x - 5"
+            [style.top.px]="inPos.y - 5"
           ></div>
         }
 

@@ -1,5 +1,11 @@
 # GatterPLUS – Setup & Starten
 
+## Live-Version (kein Install nötig)
+
+**https://markheimlich.github.io/ProjektInformatikLK/**
+
+---
+
 ## Voraussetzungen
 
 Node.js (Version 18 oder neuer) muss installiert sein.  
@@ -68,3 +74,14 @@ npm start
 - `npm start` läuft dauerhaft im Terminal. Die Seite aktualisiert sich automatisch bei Code-Änderungen.
 - Zum Beenden: `Strg + C` im Terminal drücken.
 - Falls Port 4200 bereits belegt ist: `npm start -- --port 4201`
+
+---
+
+## Live-Version aktualisieren (nach Code-Änderungen)
+
+```bash
+cd gatter-plus
+npm run deploy
+```
+
+Dieser Befehl baut die App neu und pusht sie automatisch auf GitHub Pages.
