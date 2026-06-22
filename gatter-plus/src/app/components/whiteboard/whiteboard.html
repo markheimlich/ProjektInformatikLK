@@ -41,6 +41,7 @@
         [style.left.px]="gate.x"
         [style.top.px]="gate.y"
         [style.transform]="getGateTransform(gate)"
+        [style.filter]="getGateColorFilter(gate)"
         [class.selected]="gate.id === selectedGateId"
       >
 
@@ -123,6 +124,8 @@
           class="wire-line"
           [class.wire-high]="simulationMode && isWireHigh(wire)"
           [class.wire-low]="simulationMode && !isWireHigh(wire)"
+          [class.wire-selected]="wire.id === selectedWireId"
+          (click)="onWireClick(wire, $event)"
         />
       }
     }
@@ -135,6 +138,16 @@
       />
     }
 
+    <!-- Verbindungs-Dots: ein Ausgang versorgt mehrere Eingänge (T-Junction) -->
+    @for (pt of getWireJunctions(); track $index) {
+      <circle
+        [attr.cx]="pt.x"
+        [attr.cy]="pt.y"
+        r="4"
+        class="wire-junction"
+      />
+    }
+
   </svg>
 
   <!-- ── Pin-Highlight-Layer (nur im Wire-Modus) ────────────────────────── -->
@@ -144,25 +157,29 @@
 
         @let offsets = getPinOffsets(gate);
 
-        <!-- Ausgangs-Pins: grüne Punkte -->
+        <!-- Ausgangs-Pins: grüne Punkte (nur für nicht verbundene Pins) -->
         @for (pin of offsets.outputs; track $index) {
           @let outPos = getPinWorldPosForTemplate(gate, 'output', $index);
-          <div
-            class="pin-dot output-pin"
-            [style.left.px]="outPos.x - 5"
-            [style.top.px]="outPos.y - 5"
-            [class.drawing-start]="wireDrawing?.fromGateId === gate.id && wireDrawing?.fromPinIndex === $index"
-          ></div>
+          @if (!isOutputPinConnected(gate.id, $index) || (wireDrawing?.fromGateId === gate.id && wireDrawing?.fromPinIndex === $index)) {
+            <div
+              class="pin-dot output-pin"
+              [style.left.px]="outPos.x - 5"
+              [style.top.px]="outPos.y - 5"
+              [class.drawing-start]="wireDrawing?.fromGateId === gate.id && wireDrawing?.fromPinIndex === $index"
+            ></div>
+          }
         }
 
-        <!-- Eingangs-Pins: blaue Punkte -->
+        <!-- Eingangs-Pins: blaue Punkte (nur für nicht verbundene Pins) -->
         @for (pin of offsets.inputs; track $index) {
           @let inPos = getPinWorldPosForTemplate(gate, 'input', $index);
-          <div
-            class="pin-dot input-pin"
-            [style.left.px]="inPos.x - 5"
-            [style.top.px]="inPos.y - 5"
-          ></div>
+          @if (!isInputPinConnected(gate.id, $index)) {
+            <div
+              class="pin-dot input-pin"
+              [style.left.px]="inPos.x - 5"
+              [style.top.px]="inPos.y - 5"
+            ></div>
+          }
         }
 
       }

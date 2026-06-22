@@ -41,6 +41,7 @@
   top: 0;
   left: 0;
   pointer-events: none; /* Maus-Events gehen durch zum Viewport */
+  z-index: 2;  /* Gatter-Körper überdecken Leitungs-Enden → saubere Anschlüsse */
 }
 
 .placed-gate {
@@ -66,11 +67,11 @@
   position: absolute;
   top: 0;
   left: 0;
-  /* Sehr groß damit Leitungen immer sichtbar sind */
   width: 99999px;
   height: 99999px;
   overflow: visible;
   pointer-events: none;
+  z-index: 1;  /* unter den Gatter-Körpern → Leitungsenden verschwinden sauber im Gate */
 }
 
 /* Normale Leitung */
@@ -78,6 +79,14 @@
   stroke: #334155;
   stroke-width: 2;
   fill: none;
+  pointer-events: stroke;  /* Klick nur auf dem Strich (nicht im leeren Bereich) */
+  cursor: pointer;
+}
+
+/* Ausgewählte Leitung: blau hervorgehoben */
+.wire-line.wire-selected {
+  stroke: #3b82f6;
+  stroke-width: 3;
 }
 
 /* Leitung führt HIGH-Signal: grün */
@@ -101,6 +110,12 @@
   opacity: 0.8;
 }
 
+/* Verbindungs-Punkt (T-Junction): ein Ausgang → mehrere Eingänge */
+.wire-junction {
+  fill: #1e293b;
+  pointer-events: none;
+}
+
 /* ── Pin-Highlight-Layer ─────────────────────────────────────────────────── */
 
 .pins-layer {
@@ -108,6 +123,7 @@
   top: 0;
   left: 0;
   pointer-events: none;
+  z-index: 3;  /* über Gatter und Leitungen → Pin-Dots immer sichtbar */
 }
 
 /* Pin-Punkt: kleiner Kreis */

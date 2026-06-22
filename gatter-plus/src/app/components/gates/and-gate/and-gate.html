@@ -4,11 +4,13 @@
   [class.toolbar-mode]="toolbarMode"
   [class.signal-high]="signalOutput === true"
   [class.signal-low]="signalOutput === false"
+  [style.height.px]="toolbarMode ? 44 : gateHeight"
 >
-  <!-- Eingangs-Drähte (links, 2 Stück) -->
+  <!-- Eingangs-Drähte (links, Anzahl abhängig von inputCount) -->
   <div class="pins-in">
-    <div class="wire"></div>
-    <div class="wire"></div>
+    @for (w of wireArray; track w) {
+      <div class="wire"></div>
+    }
   </div>
 
   <!-- Gatter-Körper: Rechteck mit "&" -->

@@ -5,27 +5,27 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  height: 52px;        /* Einheitliche Höhe für alle 2-Eingang-Gatter */
+  min-height: 52px;    /* Wächst mit inputCount – per [style.height.px] gesteuert */
   user-select: none;
 }
 
 /* Toolbar-Modus: etwas kompakter */
 .gate.toolbar-mode {
   height: 44px;
-  .gate-body { width: 44px; height: 34px; }
+  .gate-body { width: 44px; }
   .wire { width: 8px; }
   .symbol { font-size: 15px; }
 }
 
 /* Simulations-Zustand HIGH: grüner Körper */
 .gate.signal-high .gate-body {
-  background: #bbf7d0;   /* Hellgrün */
+  background: #bbf7d0;
   border-color: #16a34a;
 }
 
 /* Simulations-Zustand LOW: grauer Körper */
 .gate.signal-low .gate-body {
-  background: #f1f5f9;   /* Hellgrau */
+  background: #f1f5f9;
   border-color: #64748b;
 }
 
@@ -33,15 +33,15 @@
 .pins-in {
   display: flex;
   flex-direction: column;
-  justify-content: space-around; /* gleichmäßig verteilt (pin 0 oben, pin 1 unten) */
-  align-self: stretch;           /* volle Höhe des Gatters */
-  padding: 10px 0;               /* Abstand oben/unten damit Drähte nicht am Rand */
+  justify-content: space-around;
+  align-self: stretch;
+  padding: 10px 0;
 }
 
 /* Container für Ausgangs-Draht (rechts) */
 .pins-out {
   display: flex;
-  align-items: center;  /* Draht vertikal zentriert */
+  align-items: center;
   align-self: stretch;
 }
 
@@ -53,16 +53,16 @@
   flex-shrink: 0;
 }
 
-/* Gatter-Körper: DIN-Rechteck */
+/* Gatter-Körper: DIN-Rechteck – streckt sich zur vollen Gatterhöhe */
 .gate-body {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 52px;
-  height: 42px;
+  align-self: stretch;
   background: #ffffff;
   border: 2px solid #1e293b;
-  border-radius: 0;        /* DIN-Standard: kein US-Stil */
+  border-radius: 0;
   transition: background 0.15s, border-color 0.15s;
 }
 

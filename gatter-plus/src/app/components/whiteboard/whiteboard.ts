@@ -109,6 +109,8 @@ export class Whiteboard implements OnDestroy {
   // ─── Auswahl ───────────────────────────────────────────────────────────────
   /** ID des aktuell ausgewählten Bauteils (null = nichts ausgewählt) */
   selectedGateId: string | null = null;
+  /** ID der aktuell ausgewählten Leitung (null = keine ausgewählt) */
+  selectedWireId: string | null = null;
 
   get selectedGate(): GateInstance | null {
     return this.selectedGateId
@@ -205,7 +207,6 @@ export class Whiteboard implements OnDestroy {
 
   /** Löscht ein Bauteil und alle zugehörigen Leitungen */
   deleteGate(gateId: string): void {
-    // Taktgeber-Intervall stoppen
     const handle = this.clockIntervals.get(gateId);
     if (handle !== undefined) clearInterval(handle);
     this.clockIntervals.delete(gateId);
@@ -215,6 +216,13 @@ export class Whiteboard implements OnDestroy {
       w => w.fromGateId !== gateId && w.toGateId !== gateId
     );
     if (this.selectedGateId === gateId) this.selectedGateId = null;
+    if (this.simulationMode) this.recomputeSimulation();
+  }
+
+  /** Löscht eine einzelne Leitung */
+  deleteWire(wireId: string): void {
+    this.wires = this.wires.filter(w => w.id !== wireId);
+    if (this.selectedWireId === wireId) this.selectedWireId = null;
     if (this.simulationMode) this.recomputeSimulation();
   }
 
@@ -252,6 +260,7 @@ export class Whiteboard implements OnDestroy {
     const hitGate = this.findGateAt(lx, ly);
     if (hitGate) {
       this.selectedGateId = hitGate.id;
+      this.selectedWireId = null;
       this.gateDragState  = {
         gateId:      hitGate.id,
         originX:     hitGate.x,
@@ -265,6 +274,7 @@ export class Whiteboard implements OnDestroy {
 
     // ── Klick ins Leere → Auswahl aufheben, Panning starten ─────────────────
     this.selectedGateId = null;
+    this.selectedWireId = null;
     this.isPanning        = true;
     this.panStartMouseX   = event.clientX;
     this.panStartMouseY   = event.clientY;
@@ -288,11 +298,23 @@ export class Whiteboard implements OnDestroy {
         this.gateDragStarted = true;
       }
       if (this.gateDragStarted) {
+        const movedId = this.gateDragState.gateId;
         const newX = this.gateDragState.originX + dx;
         const newY = this.gateDragState.originY + dy;
-        this.gates = this.gates.map(g =>
-          g.id === this.gateDragState!.gateId ? { ...g, x: newX, y: newY } : g
+        const updatedGates = this.gates.map(g =>
+          g.id === movedId ? { ...g, x: newX, y: newY } : g
         );
+        this.gates = updatedGates;
+        // Waypoints aller angeschlossenen Leitungen neu berechnen (Bug 1: keine Diagonalen)
+        this.wires = this.wires.map(wire => {
+          if (wire.fromGateId !== movedId && wire.toGateId !== movedId) return wire;
+          const from = updatedGates.find(g => g.id === wire.fromGateId);
+          const to   = updatedGates.find(g => g.id === wire.toGateId);
+          if (!from || !to) return wire;
+          const start = getPinWorldPos(from, 'output', wire.fromPinIndex);
+          const end   = getPinWorldPos(to,   'input',  wire.toPinIndex);
+          return { ...wire, points: computeOrthogonalWaypoints(start.x, start.y, end.x, end.y) };
+        });
         if (this.simulationMode) this.recomputeSimulation();
       }
     }
@@ -342,11 +364,27 @@ export class Whiteboard implements OnDestroy {
     this.dragState.endDrag();
   }
 
-  /** Del-Taste → ausgewähltes Bauteil löschen */
-  @HostListener('document:keydown.delete')
-  @HostListener('document:keydown.backspace')
-  onDeleteKey(): void {
-    if (this.selectedGateId) this.deleteGate(this.selectedGateId);
+  /** Del-Taste → ausgewähltes Bauteil oder Leitung löschen */
+  @HostListener('document:keydown.delete', ['$event'])
+  @HostListener('document:keydown.backspace', ['$event'])
+  onDeleteKey(event: Event): void {
+    // Nicht auslösen wenn ein Eingabefeld fokussiert ist
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) return;
+    if (this.selectedGateId) {
+      event.preventDefault();
+      this.deleteGate(this.selectedGateId);
+    } else if (this.selectedWireId) {
+      event.preventDefault();
+      this.deleteWire(this.selectedWireId);
+    }
+  }
+
+  /** Klick auf eine Leitung → Leitung auswählen */
+  onWireClick(wire: WireConnection, event: MouseEvent): void {
+    event.stopPropagation();
+    this.selectedWireId = wire.id;
+    this.selectedGateId = null;
   }
 
   // ─── Leitungs-Logik ────────────────────────────────────────────────────────
@@ -470,17 +508,16 @@ export class Whiteboard implements OnDestroy {
     return gate.rotation !== 0 ? `rotate(${gate.rotation}deg)` : '';
   }
 
-  /** CSS-Filter für die Gehäuse-Farbe */
-  getGateColorStyle(gate: GateInstance): string {
+  /** CSS-Filter-Wert für die Gehäuse-Farbe (für [style.filter] Binding) */
+  getGateColorFilter(gate: GateInstance): string {
     const map: Record<GateColor, string> = {
       default: '',
-      yellow:  'brightness(1) sepia(1) saturate(3) hue-rotate(10deg)',
-      green:   'brightness(1) sepia(1) saturate(4) hue-rotate(80deg)',
-      red:     'brightness(1) sepia(1) saturate(4) hue-rotate(320deg)',
-      orange:  'brightness(1) sepia(1) saturate(4) hue-rotate(340deg) brightness(1.1)',
+      yellow:  'sepia(1) saturate(8) hue-rotate(15deg)',
+      green:   'sepia(1) saturate(8) hue-rotate(100deg) brightness(0.9)',
+      red:     'sepia(1) saturate(8) hue-rotate(300deg) brightness(0.9)',
+      orange:  'sepia(1) saturate(10) hue-rotate(25deg) brightness(1.1)',
     };
-    const f = map[gate.color] ?? '';
-    return f ? `filter: ${f}` : '';
+    return map[gate.color] ?? '';
   }
 
   /** Erzeugt den SVG-Punkte-String für eine Polyline-Leitung */
@@ -534,6 +571,36 @@ export class Whiteboard implements OnDestroy {
 
   getPinOffsets(gate: GateInstance) {
     return getGatePinOffsets(gate);
+  }
+
+  /** true wenn dieser Ausgangs-Pin bereits eine Leitung hat */
+  isOutputPinConnected(gateId: string, pinIndex: number): boolean {
+    return this.wires.some(w => w.fromGateId === gateId && w.fromPinIndex === pinIndex);
+  }
+
+  /** true wenn dieser Eingangs-Pin bereits eine Leitung hat */
+  isInputPinConnected(gateId: string, pinIndex: number): boolean {
+    return this.wires.some(w => w.toGateId === gateId && w.toPinIndex === pinIndex);
+  }
+
+  /**
+   * Positionen wo sich Leitungen aufteilen (ein Ausgang → mehrere Eingänge).
+   * An diesen Punkten wird ein Verbindungs-Dot gezeichnet.
+   */
+  getWireJunctions(): { x: number; y: number }[] {
+    const sourceCount = new Map<string, number>();
+    for (const wire of this.wires) {
+      const key = `${wire.fromGateId}:${wire.fromPinIndex}`;
+      sourceCount.set(key, (sourceCount.get(key) ?? 0) + 1);
+    }
+    const result: { x: number; y: number }[] = [];
+    for (const [key, count] of sourceCount.entries()) {
+      if (count < 2) continue;
+      const [gateId, idxStr] = key.split(':');
+      const gate = this.gates.find(g => g.id === gateId);
+      if (gate) result.push(getPinWorldPos(gate, 'output', +idxStr));
+    }
+    return result;
   }
 
   get isDraggingGate(): boolean { return this.dragState.isDragging(); }
