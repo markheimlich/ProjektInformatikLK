@@ -138,7 +138,14 @@ export class Whiteboard implements OnDestroy {
       this.recomputeSimulation();
     } else {
       this.stopClockIntervals();
+      // Alle Eingänge, Taktgeber und FF-Zustände zurücksetzen
+      this.gates = this.gates.map(g => {
+        if (g.type === 'input' || g.type === 'clock-gen') return { ...g, inputValue: false };
+        if (g.type === 'jk-ff') return { ...g, ffState: false };
+        return g;
+      });
       this.signalStates.clear();
+      this.simulationService.clearState();
     }
   }
 
@@ -508,8 +515,18 @@ export class Whiteboard implements OnDestroy {
     return gate.rotation !== 0 ? `rotate(${gate.rotation}deg)` : '';
   }
 
-  /** CSS-Filter-Wert für die Gehäuse-Farbe (für [style.filter] Binding) */
+  /** CSS-Filter-Wert für die Gehäuse-Farbe (für [style.filter] Binding).
+   *  Im Simulationsmodus: bei HIGH-Signal kein Filter → das Standard-Grün
+   *  der signal-high CSS-Klasse erscheint unverfälscht.
+   *  Bei LOW-Signal oder außerhalb der Simulation: eingestellte Farbe. */
   getGateColorFilter(gate: GateInstance): string {
+    if (this.simulationMode) {
+      // Ausgang bestimmen: output-LED reagiert auf Eingangs-Signal
+      const isHigh = gate.type === 'output'
+        ? this.getSignalInput(gate.id) === true
+        : this.getSignalOutput(gate.id, 0) === true;
+      if (isHigh) return '';  // Standard-Grün unverfälscht zeigen
+    }
     const map: Record<GateColor, string> = {
       default: '',
       yellow:  'sepia(1) saturate(8) hue-rotate(15deg)',
@@ -520,7 +537,10 @@ export class Whiteboard implements OnDestroy {
     return map[gate.color] ?? '';
   }
 
-  /** Erzeugt den SVG-Punkte-String für eine Polyline-Leitung */
+  /** Erzeugt den SVG-Punkte-String für eine Polyline-Leitung.
+   *  Wegpunkte dynamisch aus aktuellen Pin-Positionen + echter Gate-Größe berechnet:
+   *  - Vorwärts (Ziel rechts): Mittelknick
+   *  - Rückwärts (Ziel links): U-Kurve OBERHALB beider Bauteile (nutzt from.y / to.y) */
   getWirePointsString(wire: WireConnection): string | null {
     const from = this.gates.find(g => g.id === wire.fromGateId);
     const to   = this.gates.find(g => g.id === wire.toGateId);
@@ -529,14 +549,26 @@ export class Whiteboard implements OnDestroy {
     const start = getPinWorldPos(from, 'output', wire.fromPinIndex);
     const end   = getPinWorldPos(to,   'input',  wire.toPinIndex);
 
-    if (wire.points.length === 0) {
-      // Gerade Linie
-      return `${start.x},${start.y} ${end.x},${end.y}`;
+    let waypoints: { x: number; y: number }[];
+    const GAP = 20;
+
+    if (end.x >= start.x) {
+      // Normalfall: Ziel liegt rechts → Mittelknick
+      const midX = Math.round((start.x + end.x) / 2);
+      waypoints = [{ x: midX, y: start.y }, { x: midX, y: end.y }];
+    } else {
+      // Rückwärts: U-Kurve oberhalb beider Bauteile.
+      // from.y / to.y = obere Kante des platzierten Bauteils in Canvas-Koordinaten
+      const topY = Math.min(from.y, to.y) - GAP;
+      waypoints = [
+        { x: start.x + GAP, y: start.y },
+        { x: start.x + GAP, y: topY },
+        { x: end.x - GAP,   y: topY },
+        { x: end.x - GAP,   y: end.y },
+      ];
     }
 
-    // Rechtwinklige Führung mit Wegpunkten
-    const pts = [start, ...wire.points, end];
-    return pts.map(p => `${p.x},${p.y}`).join(' ');
+    return [start, ...waypoints, end].map(p => `${p.x},${p.y}`).join(' ');
   }
 
   /** Tentative-Leitung als SVG-Punkte-String (orthogonal) */
@@ -587,18 +619,21 @@ export class Whiteboard implements OnDestroy {
    * Positionen wo sich Leitungen aufteilen (ein Ausgang → mehrere Eingänge).
    * An diesen Punkten wird ein Verbindungs-Dot gezeichnet.
    */
-  getWireJunctions(): { x: number; y: number }[] {
+  getWireJunctions(): { x: number; y: number; gateId: string; pinIndex: number }[] {
     const sourceCount = new Map<string, number>();
     for (const wire of this.wires) {
       const key = `${wire.fromGateId}:${wire.fromPinIndex}`;
       sourceCount.set(key, (sourceCount.get(key) ?? 0) + 1);
     }
-    const result: { x: number; y: number }[] = [];
+    const result: { x: number; y: number; gateId: string; pinIndex: number }[] = [];
     for (const [key, count] of sourceCount.entries()) {
       if (count < 2) continue;
       const [gateId, idxStr] = key.split(':');
       const gate = this.gates.find(g => g.id === gateId);
-      if (gate) result.push(getPinWorldPos(gate, 'output', +idxStr));
+      if (gate) {
+        const pos = getPinWorldPos(gate, 'output', +idxStr);
+        result.push({ ...pos, gateId, pinIndex: +idxStr });
+      }
     }
     return result;
   }

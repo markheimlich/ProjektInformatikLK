@@ -115,6 +115,8 @@
   fill: #1e293b;
   pointer-events: none;
 }
+.wire-junction.junction-high { fill: #16a34a; }
+.wire-junction.junction-low  { fill: #64748b; }
 
 /* ── Pin-Highlight-Layer ─────────────────────────────────────────────────── */
 

@@ -145,6 +145,8 @@
         [attr.cy]="pt.y"
         r="4"
         class="wire-junction"
+        [class.junction-high]="simulationMode && getSignalOutput(pt.gateId, pt.pinIndex) === true"
+        [class.junction-low]="simulationMode && getSignalOutput(pt.gateId, pt.pinIndex) === false"
       />
     }
 

@@ -149,10 +149,19 @@ export function getGatePinOffsets(
     case 'and':
     case 'or':
     case 'xor': {
-      // Eingänge gleichmäßig über die linke Seite verteilen
-      const inputs = Array.from({ length: gate.inputCount }, (_, i) => ({
+      // Pin-Positionen exakt nach CSS-Logik berechnen:
+      //   .pins-in { justify-content: space-around; padding: 10px 0 }
+      //   .wire    { height: 2px }
+      // CSS space-around: jedes Element bekommt (freier_platz / n) als Einheit,
+      // davon je eine halbe Einheit vor und nach dem Element.
+      const PAD = 10;     // padding oben und unten
+      const T   = 2;      // Draht-Höhe in px
+      const n   = gate.inputCount;
+      const unit    = (dim.h - 2 * PAD - n * T) / n;
+      const halfUnit = unit / 2;
+      const inputs = Array.from({ length: n }, (_, i) => ({
         x: 0,
-        y: Math.round(dim.h * (i + 1) / (gate.inputCount + 1)),
+        y: Math.round(PAD + halfUnit + T / 2 + i * (unit + T)),
       }));
       return { inputs, outputs: [{ x: dim.w, y: Math.round(dim.h / 2) }] };
     }
@@ -322,18 +331,35 @@ export function createGateInstance(
 
 /**
  * Berechnet die Wegpunkte für eine orthogonale (rechtwinklige) Leitung.
- * Der Knick liegt in der horizontalen Mitte zwischen Start und Ziel.
  *
- * Routing-Schema: Start → (midX, y1) → (midX, y2) → Ende
+ * Vorwärts (x2 >= x1): Mittelknick horizontal.
+ *   Start → (midX, y1) → (midX, y2) → Ende
+ *
+ * Rückwärts (x2 < x1): U-Kurve um die Komponenten herum.
+ *   Start → (x1+GAP, y1) → (x1+GAP, midY) → (x2-GAP, midY) → (x2-GAP, y2) → Ende
  */
 export function computeOrthogonalWaypoints(
   x1: number, y1: number,
   x2: number, y2: number
 ): { x: number; y: number }[] {
-  const midX = Math.round((x1 + x2) / 2);
+  if (x2 >= x1) {
+    // Normalfall: Ziel liegt rechts → Mittelknick
+    const midX = Math.round((x1 + x2) / 2);
+    return [{ x: midX, y: y1 }, { x: midX, y: y2 }];
+  }
+  // Rückwärts-Fall: Ziel liegt links → U-Kurve
+  const GAP = 20;
+  const xRight = x1 + GAP;
+  const xLeft  = x2 - GAP;
+  // Wenn beide Pins auf ähnlicher Höhe sind → über die Komponenten routen
+  const midY = Math.abs(y2 - y1) > 40
+    ? Math.round((y1 + y2) / 2)
+    : Math.min(y1, y2) - 35;
   return [
-    { x: midX, y: y1 },
-    { x: midX, y: y2 },
+    { x: xRight, y: y1 },
+    { x: xRight, y: midY },
+    { x: xLeft,  y: midY },
+    { x: xLeft,  y: y2 },
   ];
 }
 

@@ -18,11 +18,12 @@ export interface ComponentSignalState {
 /**
  * Service für die Logik-Simulation der Schaltung.
  *
- * Algorithmus: BFS-Topologische Verarbeitung
- * 1. Start bei Eingangs-Schaltern und Taktgebern (type 'input' / 'clock-gen')
- * 2. Berechne deren Ausgang direkt aus dem gespeicherten Zustand
- * 3. Propagiere über Leitungen zu nachgelagerten Bauteilen
- * 4. Berechne Gatter-Ausgänge sobald alle nötigen Eingänge bekannt sind
+ * Algorithmus: BFS-Propagation mit Vorinitialisierung aus prevOutputs
+ * - Rückkopplungsschleifen (z.B. SR-Latch aus NOR-Gattern) werden korrekt
+ *   behandelt, indem die Eingangs-Pins der Feedback-Leitungen vor dem BFS
+ *   mit dem Ausgangswert des vorherigen Simulations-Schritts belegt werden.
+ * - BFS überschreibt diese Vorwerte für alle Signale, die vorwärts von
+ *   Eingangs-Schaltern propagiert werden – der Rest behält den alten Wert.
  *
  * JK-Flip-Flops sind speichernd: ihr Q-Ausgang hängt vom vorherigen Zustand ab.
  * Der Zustand wird in gate.ffState gespeichert und bei jedem Simulationsschritt
@@ -30,6 +31,19 @@ export interface ComponentSignalState {
  */
 @Injectable({ providedIn: 'root' })
 export class SimulationService {
+  /**
+   * Ausgangssignale des letzten Simulations-Schritts.
+   * Werden für Feedback-Schleifen als Vorinitialisierung verwendet.
+   */
+  private prevOutputs = new Map<string, (boolean | null)[]>();
+
+  /**
+   * Setzt den internen Zustand zurück (beim Ausschalten der Simulation).
+   */
+  clearState(): void {
+    this.prevOutputs.clear();
+  }
+
   /**
    * Berechnet alle Signalzustände der gesamten Schaltung.
    *
@@ -50,6 +64,20 @@ export class SimulationService {
         inputSignals:  new Array(offsets.inputs.length).fill(null),
         outputSignals: new Array(offsets.outputs.length).fill(null),
       });
+    }
+
+    // Feedback-Vorinitialisierung: Eingangs-Pins mit dem letzten bekannten
+    // Ausgangswert der verbundenen Quelle belegen. BFS überschreibt diese
+    // Werte, sobald er vorwärts propagiert – für Rückkopplungspfade liefert
+    // dies den korrekten Startwert (Halte-Zustand).
+    for (const wire of wires) {
+      const srcPrev = this.prevOutputs.get(wire.fromGateId);
+      if (srcPrev !== undefined && srcPrev[wire.fromPinIndex] !== undefined) {
+        const destState = result.get(wire.toGateId);
+        if (destState) {
+          destState.inputSignals[wire.toPinIndex] = srcPrev[wire.fromPinIndex] ?? null;
+        }
+      }
     }
 
     // Signalquellen: Eingangs-Schalter und Taktgeber setzen ihre Ausgänge direkt
@@ -94,6 +122,11 @@ export class SimulationService {
           queue.push(wire.toGateId);
         }
       }
+    }
+
+    // Ergebnisse für den nächsten Simulations-Schritt speichern
+    for (const [id, state] of result) {
+      this.prevOutputs.set(id, [...state.outputSignals]);
     }
 
     return result;
