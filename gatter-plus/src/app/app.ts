@@ -49,4 +49,11 @@ export class App {
   onGateDelete(gateId: string): void {
     this.whiteboardRef.deleteGate(gateId);
   }
+
+  onUndo():  void { this.whiteboardRef.undo(); }
+  onCopy():  void { this.whiteboardRef.copySelected(); }
+  onPaste(): void { this.whiteboardRef.pasteClipboard(); }
+
+  get canUndo():  boolean { return this.whiteboardRef?.canUndo  ?? false; }
+  get canPaste(): boolean { return this.whiteboardRef?.canPaste ?? false; }
 }

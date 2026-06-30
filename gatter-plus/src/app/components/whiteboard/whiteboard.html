@@ -13,6 +13,7 @@
   [class.dragging]="isDraggingGate"
   [class.wire-mode]="toolMode === 'wire'"
   (mousedown)="onMouseDown($event)"
+  (dblclick)="onDblClick($event)"
 >
 
   <!-- ── Raster via SVG-Pattern ────────────────────────────────────────── -->
@@ -42,7 +43,7 @@
         [style.top.px]="gate.y"
         [style.transform]="getGateTransform(gate)"
         [style.filter]="getGateColorFilter(gate)"
-        [class.selected]="gate.id === selectedGateId"
+        [class.selected]="selectedGateIds.has(gate.id)"
       >
 
         @if (gate.type === 'and') {
@@ -109,7 +110,52 @@
           ></app-text-label>
         }
 
+        <!-- Label-Overlay: sichtbar wenn das Bauteil ein Label hat -->
+        @if (gate.label && gate.type !== 'text-label') {
+          @if (editingLabelGateId === gate.id) {
+            <!-- Inline-Eingabefeld (aktiv bei Doppelklick) -->
+            <input
+              class="label-edit-input"
+              type="text"
+              [(ngModel)]="editingLabelValue"
+              (keydown.enter)="commitLabel()"
+              (keydown.escape)="cancelEditLabel()"
+              (blur)="commitLabel()"
+              (mousedown)="$event.stopPropagation()"
+              (click)="$event.stopPropagation()"
+            />
+          } @else {
+            <!-- Label-Text (Lese-Ansicht) -->
+            <div class="gate-label-overlay">{{ gate.label }}</div>
+          }
+        }
+
+        <!-- Leeres Inline-Eingabefeld: wird gezeigt wenn kein Label vorhanden, aber Bearbeitung aktiv -->
+        @if (!gate.label && editingLabelGateId === gate.id && gate.type !== 'text-label') {
+          <input
+            class="label-edit-input"
+            type="text"
+            [(ngModel)]="editingLabelValue"
+            (keydown.enter)="commitLabel()"
+            (keydown.escape)="cancelEditLabel()"
+            (blur)="commitLabel()"
+            (mousedown)="$event.stopPropagation()"
+            (click)="$event.stopPropagation()"
+          />
+        }
+
       </div>
+    }
+
+    <!-- Auswahlrahmen (Ctrl+Drag auf leerer Fläche) -->
+    @if (selectionRectDisplay) {
+      <div
+        class="selection-rect"
+        [style.left.px]="selectionRectDisplay.left"
+        [style.top.px]="selectionRectDisplay.top"
+        [style.width.px]="selectionRectDisplay.width"
+        [style.height.px]="selectionRectDisplay.height"
+      ></div>
     }
   </div>
 

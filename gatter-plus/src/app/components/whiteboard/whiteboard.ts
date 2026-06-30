@@ -6,6 +6,7 @@ import {
   OnDestroy,
   ViewChild,
 } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { AndGate }     from '../gates/and-gate/and-gate';
 import { OrGate }      from '../gates/or-gate/or-gate';
 import { NotGate }     from '../gates/not-gate/not-gate';
@@ -26,25 +27,37 @@ import {
 } from '../../models/gate.model';
 import { DragStateService }    from '../../services/drag-state.service';
 import { SimulationService, ComponentSignalState } from '../../services/simulation.service';
+import { HistoryService }      from '../../services/history.service';
 import { ToolMode }            from '../toolbar-left/toolbar-left';
 
 /** Zustand während des Leitungs-Zeichnens */
 interface WireDrawingState {
-  fromGateId: string;
+  fromGateId:   string;
   fromPinIndex: number;
   x1: number;
   y1: number;
 }
 
-/** Zustand während des Verschiebens eines platzierten Bauteils */
+/** Zustand während des Verschiebens eines oder mehrerer Bauteile */
 interface GateDragState {
-  gateId: string;
-  /** Logische Ausgangsposition beim Drag-Start */
-  originX: number;
-  originY: number;
+  gateId:      string;
+  /** Logische Ausgangsposition des primären Bauteils beim Drag-Start */
+  originX:     number;
+  originY:     number;
   /** Mausposition beim Drag-Start (Bildschirm) */
   startMouseX: number;
   startMouseY: number;
+  /**
+   * Ursprungspositionen aller weiteren selektierten Bauteile (außer dem primären).
+   * Beim Multi-Drag werden alle um dasselbe Delta verschoben.
+   */
+  otherOrigins: Map<string, { ox: number; oy: number }>;
+}
+
+/** Zustand eines aufgezogenen Auswahlrechtecks (Ctrl+Drag auf leerer Fläche) */
+interface SelectionRectState {
+  startLx: number;
+  startLy: number;
 }
 
 /**
@@ -54,15 +67,19 @@ interface GateDragState {
  * - SVG-Raster (scrollt mit dem Pan-Versatz)
  * - Pan (Maus ziehen, Leinwand verschieben)
  * - Gatter-Drop (Toolbar → mousedown → mouseup auf Whiteboard)
- * - Gatter verschieben (Klick-Drag auf platziertes Bauteil)
- * - Gatter auswählen (Klick auf Bauteil → Properties Panel)
+ * - Gatter verschieben / Multi-Select verschieben
+ * - Gatter auswählen (Einzel- und Mehrfachauswahl per Ctrl)
+ * - Auswahlrahmen (Ctrl+Drag auf leerer Fläche)
  * - Leitungen zeichnen (Wire-Modus, rechtwinklige Führung)
- * - Simulation: BFS-Signalpropagierung + Taktgeber-Intervalle
+ * - Simulation: Fixpunkt-Iteration + Taktgeber-Intervalle
  * - Eingangs-Schalter umschalten (Klick im Simulations-Modus)
+ * - Undo (Ctrl+Z), Kopieren (Ctrl+C), Einfügen (Ctrl+V)
+ * - Bauteile umbenennen (Doppelklick → Inline-Eingabe)
  */
 @Component({
   selector: 'app-whiteboard',
   imports: [
+    FormsModule,
     AndGate, OrGate, NotGate, XorGate,
     JkFlipflop, HalfAdder, FullAdder,
     InputSwitch, OutputLed, ClockGen, TextLabel,
@@ -72,8 +89,9 @@ interface GateDragState {
 })
 export class Whiteboard implements OnDestroy {
   // ─── Services ──────────────────────────────────────────────────────────────
-  private readonly dragState        = inject(DragStateService);
+  private readonly dragState         = inject(DragStateService);
   private readonly simulationService = inject(SimulationService);
+  private readonly historyService    = inject(HistoryService);
 
   // ─── DOM-Referenz ───────────────────────────────────────────────────────────
   @ViewChild('viewport') viewportRef!: ElementRef<HTMLDivElement>;
@@ -81,7 +99,7 @@ export class Whiteboard implements OnDestroy {
   // ─── Pan-Zustand ───────────────────────────────────────────────────────────
   panX = 0;
   panY = 0;
-  protected isPanning   = false;
+  protected isPanning    = false;
   private panStartMouseX  = 0;
   private panStartMouseY  = 0;
   private panStartOffsetX = 0;
@@ -96,8 +114,7 @@ export class Whiteboard implements OnDestroy {
   tentativeY = 0;
 
   // ─── Gatter verschieben ────────────────────────────────────────────────────
-  private gateDragState: GateDragState | null = null;
-  /** true sobald die Maus sich >4px vom Klickpunkt entfernt hat */
+  private gateDragState:   GateDragState | null = null;
   private gateDragStarted = false;
 
   // ─── Schaltungs-Daten ──────────────────────────────────────────────────────
@@ -107,26 +124,174 @@ export class Whiteboard implements OnDestroy {
   private wireIdCounter = 0;
 
   // ─── Auswahl ───────────────────────────────────────────────────────────────
-  /** ID des aktuell ausgewählten Bauteils (null = nichts ausgewählt) */
+  /**
+   * ID des zuletzt angeklickten Bauteils – wird vom Properties Panel genutzt,
+   * das immer nur ein Element anzeigen kann.
+   */
   selectedGateId: string | null = null;
-  /** ID der aktuell ausgewählten Leitung (null = keine ausgewählt) */
+  /** Alle aktuell selektierten Bauteile (Einzel- und Mehrfachauswahl). */
+  selectedGateIds = new Set<string>();
+  /** ID der aktuell ausgewählten Leitung (null = keine ausgewählt). */
   selectedWireId: string | null = null;
 
+  /**
+   * Das ausgewählte Bauteil für das Properties Panel.
+   * Nur bei Einzel-Auswahl gesetzt; bei Mehrfachauswahl null
+   * (das Panel würde sonst unklare Daten mehrerer Bauteile mischen).
+   */
   get selectedGate(): GateInstance | null {
+    if (this.selectedGateIds.size !== 1) return null;
     return this.selectedGateId
       ? (this.gates.find(g => g.id === this.selectedGateId) ?? null)
       : null;
   }
 
+  // ─── Auswahlrahmen (Ctrl+Drag auf leere Fläche) ───────────────────────────
+  private selectionRectState:   SelectionRectState | null = null;
+  /** Anzeigedaten für den animierten Auswahlrahmen im Template */
+  selectionRectDisplay: { left: number; top: number; width: number; height: number } | null = null;
+
+  // ─── Zwischenablage ────────────────────────────────────────────────────────
+  private clipboard: { gates: GateInstance[]; wires: WireConnection[] } | null = null;
+
+  // ─── Inline Label-Bearbeitung ─────────────────────────────────────────────
+  editingLabelGateId: string | null = null;
+  editingLabelValue  = '';
+
   // ─── Simulations-Modus ─────────────────────────────────────────────────────
   simulationMode = false;
-  private signalStates = new Map<string, ComponentSignalState>();
-  /** setInterval-Handles für jeden Taktgeber (gateId → intervalId) */
+  private signalStates  = new Map<string, ComponentSignalState>();
   private clockIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
+  // ─── Undo ──────────────────────────────────────────────────────────────────
+
+  /** Sichert den aktuellen Zustand bevor eine verändernde Aktion ausgeführt wird. */
+  private pushHistory(): void {
+    this.historyService.push(this.gates, this.wires);
+  }
+
+  /**
+   * Stellt den letzten gespeicherten Zustand wieder her.
+   * Aufruf über Ctrl+Z oder den Toolbar-Button.
+   */
+  undo(): void {
+    const snap = this.historyService.pop();
+    if (!snap) return;
+    // Laufende Taktgeber stoppen – nach Undo ggf. neu starten
+    this.stopClockIntervals();
+    this.gates           = snap.gates;
+    this.wires           = snap.wires;
+    this.selectedGateId  = null;
+    this.selectedGateIds.clear();
+    this.selectedWireId  = null;
+    this.editingLabelGateId = null;
+    if (this.simulationMode) {
+      this.startClockIntervals();
+      this.recomputeSimulation();
+    }
+  }
+
+  get canUndo(): boolean  { return this.historyService.canUndo(); }
+  get canPaste(): boolean { return this.clipboard !== null; }
+
+  // ─── Kopieren / Einfügen ───────────────────────────────────────────────────
+
+  /**
+   * Kopiert alle selektierten Bauteile und die Leitungen zwischen ihnen.
+   * Verbindungen zu NICHT-selektierten Bauteilen werden bewusst weggelassen,
+   * da deren Ziel-Pins in der Kopie nicht existieren würden.
+   */
+  copySelected(): void {
+    const ids = this.selectedGateIds.size > 0
+      ? this.selectedGateIds
+      : this.selectedGateId ? new Set([this.selectedGateId]) : new Set<string>();
+    if (ids.size === 0) return;
+
+    this.clipboard = {
+      gates: this.gates.filter(g => ids.has(g.id)).map(g => ({ ...g })),
+      // Nur interne Leitungen (beide Endpunkte in der Auswahl)
+      wires: this.wires
+        .filter(w => ids.has(w.fromGateId) && ids.has(w.toGateId))
+        .map(w => ({ ...w, points: w.points.map(p => ({ ...p })) })),
+    };
+  }
+
+  /**
+   * Fügt die Zwischenablage ein.
+   * Jedes Bauteil erhält eine neue ID; Positionen werden um +20px versetzt.
+   * Kopierte Leitungen werden auf die neuen IDs umgeschrieben.
+   */
+  pasteClipboard(): void {
+    if (!this.clipboard) return;
+    const OFFSET = 20;
+    const idMap  = new Map<string, string>();
+
+    const newGates = this.clipboard.gates.map(g => {
+      const newId = `gate-${++this.gateIdCounter}`;
+      idMap.set(g.id, newId);
+      return { ...g, id: newId, x: g.x + OFFSET, y: g.y + OFFSET };
+    });
+
+    // Leitungen auf neue IDs umschreiben (nur wenn beide Endpunkte gemappt wurden)
+    const newWires = this.clipboard.wires
+      .filter(w => idMap.has(w.fromGateId) && idMap.has(w.toGateId))
+      .map(w => ({
+        ...w,
+        id:         `wire-${++this.wireIdCounter}`,
+        fromGateId: idMap.get(w.fromGateId)!,
+        toGateId:   idMap.get(w.toGateId)!,
+        points:     w.points.map(p => ({ ...p })),
+      }));
+
+    this.pushHistory();
+    this.gates = [...this.gates, ...newGates];
+    this.wires = [...this.wires, ...newWires];
+
+    // Eingefügte Bauteile direkt selektieren (für sofortiges Weiterbearbeiten)
+    this.selectedGateIds = new Set(newGates.map(g => g.id));
+    this.selectedGateId  = newGates.length === 1 ? newGates[0].id : null;
+
+    if (this.simulationMode) this.recomputeSimulation();
+  }
+
+  // ─── Inline Label-Bearbeitung ─────────────────────────────────────────────
+
+  /**
+   * Öffnet das Inline-Eingabefeld für das Label des angeklickten Bauteils.
+   * Deaktiviert im Simulations-Modus (Klick schaltet dort Eingänge um).
+   */
+  startEditLabel(gate: GateInstance, event: MouseEvent): void {
+    if (this.simulationMode || this.toolMode === 'wire') return;
+    event.stopPropagation();
+    event.preventDefault();
+    this.editingLabelGateId = gate.id;
+    this.editingLabelValue  = gate.label ?? '';
+    // Eingabefeld im nächsten Render-Zyklus fokussieren
+    setTimeout(() => {
+      const input = this.viewportRef?.nativeElement
+        .querySelector<HTMLInputElement>('.label-edit-input');
+      input?.focus();
+      input?.select();
+    }, 0);
+  }
+
+  /** Speichert das Label und schließt das Inline-Eingabefeld. */
+  commitLabel(): void {
+    if (!this.editingLabelGateId) return;
+    this.pushHistory();
+    this.updateGate({ id: this.editingLabelGateId, label: this.editingLabelValue });
+    this.editingLabelGateId = null;
+  }
+
+  /** Schließt das Inline-Eingabefeld ohne zu speichern. */
+  cancelEditLabel(): void {
+    this.editingLabelGateId = null;
+  }
+
   // ─── Werkzeug-Wechsel ──────────────────────────────────────────────────────
+
   setToolMode(mode: ToolMode): void {
-    this.toolMode  = mode;
+    this.toolMode   = mode;
     this.wireDrawing = null;
   }
 
@@ -134,11 +299,11 @@ export class Whiteboard implements OnDestroy {
   toggleSimulation(): void {
     this.simulationMode = !this.simulationMode;
     if (this.simulationMode) {
+      this.editingLabelGateId = null;   // Inline-Edit beim Start der Simulation schließen
       this.startClockIntervals();
       this.recomputeSimulation();
     } else {
       this.stopClockIntervals();
-      // Alle Eingänge, Taktgeber und FF-Zustände zurücksetzen
       this.gates = this.gates.map(g => {
         if (g.type === 'input' || g.type === 'clock-gen') return { ...g, inputValue: false };
         if (g.type === 'jk-ff') return { ...g, ffState: false, ffPrevClock: false };
@@ -153,9 +318,7 @@ export class Whiteboard implements OnDestroy {
 
   private startClockIntervals(): void {
     for (const gate of this.gates) {
-      if (gate.type === 'clock-gen') {
-        this.startClockInterval(gate);
-      }
+      if (gate.type === 'clock-gen') this.startClockInterval(gate);
     }
   }
 
@@ -163,7 +326,6 @@ export class Whiteboard implements OnDestroy {
     if (this.clockIntervals.has(gate.id)) return;
     const period = Math.max(100, gate.clockPeriodMs ?? 1000);
     const handle = setInterval(() => {
-      // Zustand toggeln und Simulation neu berechnen
       this.gates = this.gates.map(g =>
         g.id === gate.id ? { ...g, inputValue: !g.inputValue } : g
       );
@@ -173,13 +335,10 @@ export class Whiteboard implements OnDestroy {
   }
 
   private stopClockIntervals(): void {
-    for (const handle of this.clockIntervals.values()) {
-      clearInterval(handle);
-    }
+    for (const handle of this.clockIntervals.values()) clearInterval(handle);
     this.clockIntervals.clear();
   }
 
-  /** Muss bei Periodenänderung aufgerufen werden */
   restartClockInterval(gate: GateInstance): void {
     const handle = this.clockIntervals.get(gate.id);
     if (handle !== undefined) clearInterval(handle);
@@ -193,18 +352,11 @@ export class Whiteboard implements OnDestroy {
 
   // ─── Gatter-Eigenschaften aktualisieren ────────────────────────────────────
 
-  /**
-   * Aktualisiert beliebige Felder eines platzierten Bauteils.
-   * Wird vom Properties Panel über app.ts aufgerufen.
-   */
   updateGate(changes: Partial<GateInstance> & { id: string }): void {
     const periodChanged = changes.clockPeriodMs !== undefined;
-    this.gates = this.gates.map(g => {
-      if (g.id !== changes.id) return g;
-      const updated = { ...g, ...changes };
-      return updated;
-    });
-    // Taktgeber-Intervall neu starten wenn Periode geändert
+    this.gates = this.gates.map(g =>
+      g.id !== changes.id ? g : { ...g, ...changes }
+    );
     if (periodChanged) {
       const gate = this.gates.find(g => g.id === changes.id);
       if (gate) this.restartClockInterval(gate);
@@ -212,81 +364,187 @@ export class Whiteboard implements OnDestroy {
     if (this.simulationMode) this.recomputeSimulation();
   }
 
-  /** Löscht ein Bauteil und alle zugehörigen Leitungen */
+  /** Löscht ein Bauteil und alle zugehörigen Leitungen. */
   deleteGate(gateId: string): void {
+    this.pushHistory(); // Zustand vor dem Löschen sichern
     const handle = this.clockIntervals.get(gateId);
     if (handle !== undefined) clearInterval(handle);
     this.clockIntervals.delete(gateId);
 
     this.gates = this.gates.filter(g => g.id !== gateId);
-    this.wires = this.wires.filter(
-      w => w.fromGateId !== gateId && w.toGateId !== gateId
-    );
+    this.wires = this.wires.filter(w => w.fromGateId !== gateId && w.toGateId !== gateId);
+
     if (this.selectedGateId === gateId) this.selectedGateId = null;
+    this.selectedGateIds.delete(gateId);
     if (this.simulationMode) this.recomputeSimulation();
   }
 
-  /** Löscht eine einzelne Leitung */
+  /** Löscht eine einzelne Leitung. */
   deleteWire(wireId: string): void {
+    this.pushHistory(); // Zustand vor dem Löschen sichern
     this.wires = this.wires.filter(w => w.id !== wireId);
     if (this.selectedWireId === wireId) this.selectedWireId = null;
     if (this.simulationMode) this.recomputeSimulation();
+  }
+
+  // ─── Tastatur-Shortcuts ────────────────────────────────────────────────────
+
+  /** Del/Backspace → ausgewähltes Bauteil oder Leitung löschen */
+  @HostListener('document:keydown.delete', ['$event'])
+  @HostListener('document:keydown.backspace', ['$event'])
+  onDeleteKey(event: Event): void {
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) return;
+
+    if (this.selectedGateId) {
+      event.preventDefault();
+      if (this.selectedGateIds.size > 1) {
+        // Mehrfachauswahl: alle selektierten Bauteile auf einmal löschen
+        this.pushHistory();
+        const toDelete = new Set([...this.selectedGateIds]);
+        for (const id of toDelete) {
+          const handle = this.clockIntervals.get(id);
+          if (handle !== undefined) clearInterval(handle);
+          this.clockIntervals.delete(id);
+        }
+        this.gates = this.gates.filter(g => !toDelete.has(g.id));
+        this.wires = this.wires.filter(w => !toDelete.has(w.fromGateId) && !toDelete.has(w.toGateId));
+        this.selectedGateIds.clear();
+        this.selectedGateId = null;
+        if (this.simulationMode) this.recomputeSimulation();
+      } else {
+        this.deleteGate(this.selectedGateId);
+      }
+    } else if (this.selectedWireId) {
+      event.preventDefault();
+      this.deleteWire(this.selectedWireId);
+    }
+  }
+
+  /**
+   * Ctrl+Z → Undo  |  Ctrl+C → Kopieren  |  Ctrl+V → Einfügen
+   * Kein Auslösen wenn ein Eingabefeld fokussiert ist.
+   */
+  @HostListener('document:keydown', ['$event'])
+  onKeyboardShortcut(event: KeyboardEvent): void {
+    if (!event.ctrlKey && !event.metaKey) return;
+    const active  = document.activeElement;
+    const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+    switch (event.key.toLowerCase()) {
+      case 'z':
+        if (!isInput) { event.preventDefault(); this.undo(); }
+        break;
+      case 'c':
+        if (!isInput) { event.preventDefault(); this.copySelected(); }
+        break;
+      case 'v':
+        if (!isInput) { event.preventDefault(); this.pasteClipboard(); }
+        break;
+    }
   }
 
   // ─── Maus-Events ───────────────────────────────────────────────────────────
 
   /**
    * Haupt-Maus-Handler auf dem Viewport-Div.
-   * Verzweigt nach Modus:
-   *  1. Gatter aus Toolbar wird gezogen → nur warten
+   *
+   * Verzweigt nach Zustand:
+   *  1. Toolbar-Drag läuft → warten
    *  2. Wire-Modus → Pin-Klick auswerten
-   *  3. Pan-Modus + Simulation → Eingangs-Schalter / Taktgeber togglen
-   *  4. Pan-Modus → Gatter-Klick (Auswahl/Drag) oder Panning starten
+   *  3. Simulations-Modus → Eingangs-Schalter / Taktgeber togglen
+   *  4. Gatter getroffen → Auswahl + Drag vorbereiten
+   *  5. Leere Fläche + Ctrl → Auswahlrahmen starten
+   *  6. Leere Fläche → Panning starten, Auswahl aufheben
    */
   onMouseDown(event: MouseEvent): void {
     if (event.button !== 0) return;
     event.preventDefault();
 
-    // Toolbar-Drag läuft → nur auf mouseup warten
     if (this.dragState.isDragging()) return;
 
     const { lx, ly } = this.toLogical(event);
 
-    // ── Wire-Modus ──────────────────────────────────────────────────────────
     if (this.toolMode === 'wire') {
       this.handleWireClick(lx, ly);
       return;
     }
 
-    // ── Simulation: Schalter / Taktgeber umschalten ─────────────────────────
     if (this.simulationMode) {
       if (this.tryToggleSwitch(lx, ly)) return;
     }
 
-    // ── Gatter-Klick erkennen (Auswahl + Drag) ──────────────────────────────
     const hitGate = this.findGateAt(lx, ly);
     if (hitGate) {
-      this.selectedGateId = hitGate.id;
+      // Offenes Inline-Edit eines anderen Bauteils erst abschließen
+      if (this.editingLabelGateId && this.editingLabelGateId !== hitGate.id) {
+        this.commitLabel();
+      }
+
+      if (event.ctrlKey || event.shiftKey) {
+        // Ctrl/Shift+Klick: Bauteil zur Mehrfachauswahl hinzufügen oder entfernen
+        if (this.selectedGateIds.has(hitGate.id)) {
+          this.selectedGateIds.delete(hitGate.id);
+          // selectedGateId auf ein anderes Element setzen (oder null)
+          const remaining = [...this.selectedGateIds];
+          this.selectedGateId = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+        } else {
+          this.selectedGateIds.add(hitGate.id);
+          this.selectedGateId = hitGate.id;
+        }
+      } else {
+        // Normaler Klick: Einzel-Auswahl (außer das Bauteil ist bereits Teil einer Gruppe)
+        if (!this.selectedGateIds.has(hitGate.id)) {
+          this.selectedGateIds = new Set([hitGate.id]);
+        }
+        this.selectedGateId = hitGate.id;
+      }
       this.selectedWireId = null;
-      this.gateDragState  = {
+
+      // Drag-Vorbereitung: Ursprungspositionen aller selektierten Bauteile merken
+      const otherOrigins = new Map<string, { ox: number; oy: number }>();
+      for (const id of this.selectedGateIds) {
+        if (id === hitGate.id) continue;
+        const g = this.gates.find(g => g.id === id);
+        if (g) otherOrigins.set(id, { ox: g.x, oy: g.y });
+      }
+      this.gateDragState = {
         gateId:      hitGate.id,
         originX:     hitGate.x,
         originY:     hitGate.y,
         startMouseX: event.clientX,
         startMouseY: event.clientY,
+        otherOrigins,
       };
       this.gateDragStarted = false;
       return;
     }
 
-    // ── Klick ins Leere → Auswahl aufheben, Panning starten ─────────────────
-    this.selectedGateId = null;
+    // Klick auf leere Fläche — offenes Inline-Edit abschließen
+    if (this.editingLabelGateId) this.commitLabel();
     this.selectedWireId = null;
-    this.isPanning        = true;
-    this.panStartMouseX   = event.clientX;
-    this.panStartMouseY   = event.clientY;
-    this.panStartOffsetX  = this.panX;
-    this.panStartOffsetY  = this.panY;
+
+    if (event.ctrlKey || event.shiftKey) {
+      // Ctrl+Drag: Auswahlrahmen aufziehen (additiv zur bestehenden Auswahl)
+      this.selectionRectState   = { startLx: lx, startLy: ly };
+      this.selectionRectDisplay = { left: lx, top: ly, width: 0, height: 0 };
+    } else {
+      // Normaler Klick: Auswahl aufheben + Panning starten
+      this.selectedGateIds.clear();
+      this.selectedGateId   = null;
+      this.isPanning         = true;
+      this.panStartMouseX    = event.clientX;
+      this.panStartMouseY    = event.clientY;
+      this.panStartOffsetX   = this.panX;
+      this.panStartOffsetY   = this.panY;
+    }
+  }
+
+  /** Doppelklick auf das Whiteboard → Inline-Label-Bearbeitung starten */
+  onDblClick(event: MouseEvent): void {
+    if (this.simulationMode || this.toolMode === 'wire') return;
+    const { lx, ly } = this.toLogical(event);
+    const hitGate = this.findGateAt(lx, ly);
+    if (hitGate) this.startEditLabel(hitGate, event);
   }
 
   @HostListener('document:mousemove', ['$event'])
@@ -297,7 +555,19 @@ export class Whiteboard implements OnDestroy {
       this.panY = this.panStartOffsetY + (event.clientY - this.panStartMouseY);
     }
 
-    // Gatter verschieben
+    // Auswahlrahmen aktualisieren
+    if (this.selectionRectState) {
+      const { lx, ly } = this.toLogical(event);
+      const { startLx, startLy } = this.selectionRectState;
+      this.selectionRectDisplay = {
+        left:   Math.min(startLx, lx),
+        top:    Math.min(startLy, ly),
+        width:  Math.abs(lx - startLx),
+        height: Math.abs(ly - startLy),
+      };
+    }
+
+    // Gatter verschieben (Einzel oder Mehrfach)
     if (this.gateDragState) {
       const dx = event.clientX - this.gateDragState.startMouseX;
       const dy = event.clientY - this.gateDragState.startMouseY;
@@ -306,15 +576,22 @@ export class Whiteboard implements OnDestroy {
       }
       if (this.gateDragStarted) {
         const movedId = this.gateDragState.gateId;
-        const newX = this.gateDragState.originX + dx;
-        const newY = this.gateDragState.originY + dy;
-        const updatedGates = this.gates.map(g =>
-          g.id === movedId ? { ...g, x: newX, y: newY } : g
-        );
+        const newX    = this.gateDragState.originX + dx;
+        const newY    = this.gateDragState.originY + dy;
+
+        // Alle selektierten Bauteile um dasselbe Delta verschieben
+        const updatedGates = this.gates.map(g => {
+          if (g.id === movedId) return { ...g, x: newX, y: newY };
+          const origin = this.gateDragState!.otherOrigins.get(g.id);
+          if (origin) return { ...g, x: origin.ox + dx, y: origin.oy + dy };
+          return g;
+        });
         this.gates = updatedGates;
-        // Waypoints aller angeschlossenen Leitungen neu berechnen (Bug 1: keine Diagonalen)
+
+        // Waypoints aller angeschlossenen Leitungen neu berechnen
+        const movedIds = new Set([movedId, ...this.gateDragState.otherOrigins.keys()]);
         this.wires = this.wires.map(wire => {
-          if (wire.fromGateId !== movedId && wire.toGateId !== movedId) return wire;
+          if (!movedIds.has(wire.fromGateId) && !movedIds.has(wire.toGateId)) return wire;
           const from = updatedGates.find(g => g.id === wire.fromGateId);
           const to   = updatedGates.find(g => g.id === wire.toGateId);
           if (!from || !to) return wire;
@@ -336,13 +613,33 @@ export class Whiteboard implements OnDestroy {
 
   @HostListener('document:mouseup', ['$event'])
   onMouseUp(event: MouseEvent): void {
-    // Panning beenden
     if (this.isPanning) {
       this.isPanning = false;
       return;
     }
 
-    // Gatter-Drag beenden
+    // Auswahlrahmen abschließen: alle Bauteile mit Mittelpunkt im Rechteck selektieren
+    if (this.selectionRectState && this.selectionRectDisplay) {
+      const rect = this.selectionRectDisplay;
+      if (rect.width > 4 || rect.height > 4) {
+        for (const gate of this.gates) {
+          const dim = getGateDimensions(gate);
+          const cx  = gate.x + dim.w / 2;
+          const cy  = gate.y + dim.h / 2;
+          if (cx >= rect.left && cx <= rect.left + rect.width &&
+              cy >= rect.top  && cy <= rect.top  + rect.height) {
+            this.selectedGateIds.add(gate.id);
+          }
+        }
+        if (this.selectedGateIds.size > 0 && !this.selectedGateId) {
+          this.selectedGateId = [...this.selectedGateIds][0];
+        }
+      }
+      this.selectionRectState   = null;
+      this.selectionRectDisplay = null;
+      return;
+    }
+
     if (this.gateDragState) {
       this.gateDragState   = null;
       this.gateDragStarted = false;
@@ -355,7 +652,7 @@ export class Whiteboard implements OnDestroy {
     const viewport = this.viewportRef?.nativeElement;
     if (!viewport) { this.dragState.endDrag(); return; }
 
-    const rect = viewport.getBoundingClientRect();
+    const rect    = viewport.getBoundingClientRect();
     const onBoard =
       event.clientX >= rect.left && event.clientX <= rect.right &&
       event.clientY >= rect.top  && event.clientY <= rect.bottom;
@@ -363,35 +660,17 @@ export class Whiteboard implements OnDestroy {
     if (onBoard) {
       const type = this.dragState.gateType() as GateType;
       if (type) {
-        const vx = event.clientX - rect.left;
-        const vy = event.clientY - rect.top;
-        this.placeGate(type, vx - this.panX, vy - this.panY);
+        this.placeGate(type, event.clientX - rect.left - this.panX, event.clientY - rect.top - this.panY);
       }
     }
     this.dragState.endDrag();
   }
 
-  /** Del-Taste → ausgewähltes Bauteil oder Leitung löschen */
-  @HostListener('document:keydown.delete', ['$event'])
-  @HostListener('document:keydown.backspace', ['$event'])
-  onDeleteKey(event: Event): void {
-    // Nicht auslösen wenn ein Eingabefeld fokussiert ist
-    const active = document.activeElement;
-    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) return;
-    if (this.selectedGateId) {
-      event.preventDefault();
-      this.deleteGate(this.selectedGateId);
-    } else if (this.selectedWireId) {
-      event.preventDefault();
-      this.deleteWire(this.selectedWireId);
-    }
-  }
-
-  /** Klick auf eine Leitung → Leitung auswählen */
   onWireClick(wire: WireConnection, event: MouseEvent): void {
     event.stopPropagation();
-    this.selectedWireId = wire.id;
-    this.selectedGateId = null;
+    this.selectedWireId  = wire.id;
+    this.selectedGateId  = null;
+    this.selectedGateIds.clear();
   }
 
   // ─── Leitungs-Logik ────────────────────────────────────────────────────────
@@ -400,7 +679,6 @@ export class Whiteboard implements OnDestroy {
     const near = this.findNearestPin(lx, ly);
 
     if (!this.wireDrawing) {
-      // Phase 1: Ausgangs-Pin anklicken → Leitung starten
       if (near?.pinType === 'output') {
         const pos = getPinWorldPos(near.gate, 'output', near.pinIndex);
         this.wireDrawing = {
@@ -412,7 +690,6 @@ export class Whiteboard implements OnDestroy {
         this.tentativeY = pos.y;
       }
     } else {
-      // Phase 2: Eingangs-Pin anklicken → Leitung abschließen
       if (near?.pinType === 'input' && near.gate.id !== this.wireDrawing.fromGateId) {
         const alreadyUsed = this.wires.some(
           w => w.toGateId === near.gate.id && w.toPinIndex === near.pinIndex
@@ -425,12 +702,11 @@ export class Whiteboard implements OnDestroy {
             fromPinIndex: this.wireDrawing.fromPinIndex,
             toGateId:     near.gate.id,
             toPinIndex:   near.pinIndex,
-            // Orthogonale Wegpunkte für rechtwinklige Leitungsführung
             points: computeOrthogonalWaypoints(
-              this.wireDrawing.x1, this.wireDrawing.y1,
-              endPos.x, endPos.y
+              this.wireDrawing.x1, this.wireDrawing.y1, endPos.x, endPos.y
             ),
           };
+          this.pushHistory(); // Zustand vor dem Hinzufügen der Leitung sichern
           this.wires = [...this.wires, newWire];
           if (this.simulationMode) this.recomputeSimulation();
         }
@@ -462,16 +738,13 @@ export class Whiteboard implements OnDestroy {
   // ─── Bauteil platzieren ────────────────────────────────────────────────────
 
   private placeGate(type: GateType, lx: number, ly: number): void {
+    this.pushHistory(); // Zustand vor dem Platzieren sichern
     const gate = createGateInstance(`gate-${++this.gateIdCounter}`, type, 0, 0);
     const dim  = getGateDimensions(gate);
     gate.x = Math.round(lx - dim.w / 2);
     gate.y = Math.round(ly - dim.h / 2);
     this.gates = [...this.gates, gate];
-
-    // Neuen Taktgeber sofort starten wenn Simulation läuft
-    if (type === 'clock-gen' && this.simulationMode) {
-      this.startClockInterval(gate);
-    }
+    if (type === 'clock-gen' && this.simulationMode) this.startClockInterval(gate);
     if (this.simulationMode) this.recomputeSimulation();
   }
 
@@ -482,7 +755,6 @@ export class Whiteboard implements OnDestroy {
   ): { gate: GateInstance; pinType: 'input' | 'output'; pinIndex: number } | null {
     for (const gate of this.gates) {
       const offsets = getGatePinOffsets(gate);
-
       for (let i = 0; i < offsets.outputs.length; i++) {
         const pos = getPinWorldPos(gate, 'output', i);
         if (this.dist(lx, ly, pos.x, pos.y) <= PIN_HIT_RADIUS)
@@ -498,7 +770,6 @@ export class Whiteboard implements OnDestroy {
   }
 
   private findGateAt(lx: number, ly: number): GateInstance | null {
-    // Rückwärts iterieren damit oberstes Bauteil zuerst getroffen wird
     for (let i = this.gates.length - 1; i >= 0; i--) {
       if (isPointInGate(lx, ly, this.gates[i])) return this.gates[i];
     }
@@ -515,17 +786,12 @@ export class Whiteboard implements OnDestroy {
     return gate.rotation !== 0 ? `rotate(${gate.rotation}deg)` : '';
   }
 
-  /** CSS-Filter-Wert für die Gehäuse-Farbe (für [style.filter] Binding).
-   *  Im Simulationsmodus: bei HIGH-Signal kein Filter → das Standard-Grün
-   *  der signal-high CSS-Klasse erscheint unverfälscht.
-   *  Bei LOW-Signal oder außerhalb der Simulation: eingestellte Farbe. */
   getGateColorFilter(gate: GateInstance): string {
     if (this.simulationMode) {
-      // Ausgang bestimmen: output-LED reagiert auf Eingangs-Signal
       const isHigh = gate.type === 'output'
         ? this.getSignalInput(gate.id) === true
         : this.getSignalOutput(gate.id, 0) === true;
-      if (isHigh) return '';  // Standard-Grün unverfälscht zeigen
+      if (isHigh) return '';
     }
     const map: Record<GateColor, string> = {
       default: '',
@@ -537,10 +803,6 @@ export class Whiteboard implements OnDestroy {
     return map[gate.color] ?? '';
   }
 
-  /** Erzeugt den SVG-Punkte-String für eine Polyline-Leitung.
-   *  Wegpunkte dynamisch aus aktuellen Pin-Positionen + echter Gate-Größe berechnet:
-   *  - Vorwärts (Ziel rechts): Mittelknick
-   *  - Rückwärts (Ziel links): U-Kurve OBERHALB beider Bauteile (nutzt from.y / to.y) */
   getWirePointsString(wire: WireConnection): string | null {
     const from = this.gates.find(g => g.id === wire.fromGateId);
     const to   = this.gates.find(g => g.id === wire.toGateId);
@@ -548,17 +810,13 @@ export class Whiteboard implements OnDestroy {
 
     const start = getPinWorldPos(from, 'output', wire.fromPinIndex);
     const end   = getPinWorldPos(to,   'input',  wire.toPinIndex);
+    const GAP   = 20;
 
     let waypoints: { x: number; y: number }[];
-    const GAP = 20;
-
     if (end.x >= start.x) {
-      // Normalfall: Ziel liegt rechts → Mittelknick
       const midX = Math.round((start.x + end.x) / 2);
       waypoints = [{ x: midX, y: start.y }, { x: midX, y: end.y }];
     } else {
-      // Rückwärts: U-Kurve oberhalb beider Bauteile.
-      // from.y / to.y = obere Kante des platzierten Bauteils in Canvas-Koordinaten
       const topY = Math.min(from.y, to.y) - GAP;
       waypoints = [
         { x: start.x + GAP, y: start.y },
@@ -567,15 +825,13 @@ export class Whiteboard implements OnDestroy {
         { x: end.x - GAP,   y: end.y },
       ];
     }
-
     return [start, ...waypoints, end].map(p => `${p.x},${p.y}`).join(' ');
   }
 
-  /** Tentative-Leitung als SVG-Punkte-String (orthogonal) */
   getTentativePointsString(): string {
     if (!this.wireDrawing) return '';
-    const x1 = this.wireDrawing.x1;
-    const y1 = this.wireDrawing.y1;
+    const x1   = this.wireDrawing.x1;
+    const y1   = this.wireDrawing.y1;
     const midX = Math.round((x1 + this.tentativeX) / 2);
     return `${x1},${y1} ${midX},${y1} ${midX},${this.tentativeY} ${this.tentativeX},${this.tentativeY}`;
   }
@@ -594,9 +850,7 @@ export class Whiteboard implements OnDestroy {
   }
 
   getPinWorldPosForTemplate(
-    gate: GateInstance,
-    pinType: 'input' | 'output',
-    pinIndex: number
+    gate: GateInstance, pinType: 'input' | 'output', pinIndex: number
   ): { x: number; y: number } {
     return getPinWorldPos(gate, pinType, pinIndex);
   }
@@ -605,20 +859,14 @@ export class Whiteboard implements OnDestroy {
     return getGatePinOffsets(gate);
   }
 
-  /** true wenn dieser Ausgangs-Pin bereits eine Leitung hat */
   isOutputPinConnected(gateId: string, pinIndex: number): boolean {
     return this.wires.some(w => w.fromGateId === gateId && w.fromPinIndex === pinIndex);
   }
 
-  /** true wenn dieser Eingangs-Pin bereits eine Leitung hat */
   isInputPinConnected(gateId: string, pinIndex: number): boolean {
     return this.wires.some(w => w.toGateId === gateId && w.toPinIndex === pinIndex);
   }
 
-  /**
-   * Positionen wo sich Leitungen aufteilen (ein Ausgang → mehrere Eingänge).
-   * An diesen Punkten wird ein Verbindungs-Dot gezeichnet.
-   */
   getWireJunctions(): { x: number; y: number; gateId: string; pinIndex: number }[] {
     const sourceCount = new Map<string, number>();
     for (const wire of this.wires) {
@@ -639,9 +887,7 @@ export class Whiteboard implements OnDestroy {
   }
 
   get isDraggingGate(): boolean { return this.dragState.isDragging(); }
-  get isDrawingWire(): boolean  { return this.wireDrawing !== null; }
-
-  // ─── Koordinaten-Hilfe ─────────────────────────────────────────────────────
+  get isDrawingWire():  boolean { return this.wireDrawing !== null; }
 
   private toLogical(event: MouseEvent): { lx: number; ly: number } {
     const rect = this.viewportRef.nativeElement.getBoundingClientRect();

@@ -4,7 +4,12 @@
   <!-- Obere Toolbar: Paletten + Simulations-Toggle -->
   <app-toolbar-top
     [simulationMode]="simulationMode"
+    [canUndo]="canUndo"
+    [canPaste]="canPaste"
     (simulationToggle)="onSimulationToggle()"
+    (undoClicked)="onUndo()"
+    (copyClicked)="onCopy()"
+    (pasteClicked)="onPaste()"
   ></app-toolbar-top>
 
   <!-- Hauptbereich: linke Toolbar + Whiteboard + Properties Panel -->

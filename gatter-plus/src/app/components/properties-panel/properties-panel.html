@@ -46,14 +46,13 @@
   </div>
   }
 
-  @if (isTextLabel) {
   <div class="section">
     <div class="section-title">Beschriftung</div>
     <input type="text" class="label-input"
       [value]="selectedGate.label ?? ''"
       (input)="setLabel($any($event).target.value)"
+      [placeholder]="isTextLabel ? 'Label-Text' : 'Bauteil-Name…'"
     />
   </div>
-  }
 </div>
 }

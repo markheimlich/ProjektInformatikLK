@@ -81,6 +81,32 @@
   text-transform: uppercase;
 }
 
+/* Bearbeiten-Buttons (Undo / Copy / Paste) */
+.edit-btn {
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid #475569;
+  background: transparent;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+
+  &:hover:not(:disabled) {
+    background: #334155;
+    border-color: #94a3b8;
+    color: #ffffff;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+}
+
 /* Spacer schiebt Simulation-Button nach rechts */
 .spacer { flex: 1; }
 

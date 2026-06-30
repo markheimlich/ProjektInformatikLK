@@ -83,6 +83,32 @@
     </div>
   </div>
 
+  <div class="divider"></div>
+
+  <!-- Bearbeiten: Undo / Kopieren / Einfügen -->
+  <div class="palette-group">
+    <span class="group-label">Bearbeiten</span>
+    <div class="palette-items">
+      <button
+        class="edit-btn"
+        title="Rückgängig (Ctrl+Z)"
+        [disabled]="!canUndo"
+        (click)="undoClicked.emit()"
+      >↩ Undo</button>
+      <button
+        class="edit-btn"
+        title="Kopieren (Ctrl+C)"
+        (click)="copyClicked.emit()"
+      >⎘ Copy</button>
+      <button
+        class="edit-btn"
+        title="Einfügen (Ctrl+V)"
+        [disabled]="!canPaste"
+        (click)="pasteClicked.emit()"
+      >⎗ Paste</button>
+    </div>
+  </div>
+
   <!-- Spacer schiebt Simulations-Button nach rechts -->
   <div class="spacer"></div>
 

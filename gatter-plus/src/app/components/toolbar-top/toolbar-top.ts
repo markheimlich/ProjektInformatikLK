@@ -36,7 +36,13 @@ export class ToolbarTop {
   private readonly dragState = inject(DragStateService);
 
   @Input() simulationMode = false;
+  @Input() canUndo  = false;
+  @Input() canPaste = false;
+
   @Output() simulationToggle = new EventEmitter<void>();
+  @Output() undoClicked      = new EventEmitter<void>();
+  @Output() copyClicked      = new EventEmitter<void>();
+  @Output() pasteClicked     = new EventEmitter<void>();
 
   /**
    * Startet einen Drag-Vorgang aus der Palette.
