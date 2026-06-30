@@ -747,9 +747,8 @@ export class Whiteboard implements OnDestroy {
     const near = this.findNearestPin(lx, ly);
 
     if (!this.wireDrawing) {
-      if (near?.pinType === 'output') {
-        // Verbindung nur starten wenn der Ausgangs-Pin noch freie Kapazität hat
-        if (!this.canStartWireFromOutput(near.gate.id, near.pinIndex)) return;
+      // 1. Priorität: freier Ausgangs-Pin (noch unter dem Verbindungs-Limit)
+      if (near?.pinType === 'output' && this.canStartWireFromOutput(near.gate.id, near.pinIndex)) {
         const pos = getPinWorldPos(near.gate, 'output', near.pinIndex);
         this.wireDrawing = {
           fromGateId:   near.gate.id,
@@ -758,6 +757,25 @@ export class Whiteboard implements OnDestroy {
         };
         this.tentativeX = pos.x;
         this.tentativeY = pos.y;
+        return;
+      }
+
+      // 2. Priorität: Klick auf eine bestehende Leitung → Abzweig vom gleichen
+      //    Ausgangs-Pin starten (Fan-out). Die neue Leitung beginnt visuell am
+      //    Original-Ausgangs-Pin, nicht am Klickpunkt.
+      const clickedWire = this.findWireAt(lx, ly);
+      if (clickedWire) {
+        const sourceGate = this.gates.find(g => g.id === clickedWire.fromGateId);
+        if (sourceGate) {
+          const pos = getPinWorldPos(sourceGate, 'output', clickedWire.fromPinIndex);
+          this.wireDrawing = {
+            fromGateId:   clickedWire.fromGateId,
+            fromPinIndex: clickedWire.fromPinIndex,
+            x1: pos.x, y1: pos.y,
+          };
+          this.tentativeX = pos.x;
+          this.tentativeY = pos.y;
+        }
       }
     } else {
       if (near?.pinType === 'input' && near.gate.id !== this.wireDrawing.fromGateId) {
@@ -877,31 +895,64 @@ export class Whiteboard implements OnDestroy {
   }
 
   /**
-   * Berechnet den SVG-Polyline-Punktstring für eine Leitung.
-   *
-   * Verbesserungen gegenüber der früheren Version:
-   * - Gerade Leitungen (gleiche Y) erzeugen keine überflüssigen Wegpunkte.
-   * - Rückwärts-Leitungen routen jetzt ober- ODER unterhalb, je nachdem,
-   *   welche Richtung die kürzere Strecke ergibt (statt immer nach oben).
-   * - Die untere Grenze wird aus echten Bauteil-Abmessungen berechnet,
-   *   nicht aus rohen Y-Koordinaten der Gate-Ecke.
+   * Berechnet alle Bildschirm-Punkte einer Leitung als Array.
+   * Wird von getWirePointsString (Rendering) und findWireAt (Treffertest)
+   * gemeinsam genutzt, damit beide immer denselben Verlauf verwenden.
    */
-  getWirePointsString(wire: WireConnection): string | null {
+  private getWireDisplayPoints(wire: WireConnection): { x: number; y: number }[] | null {
     const from = this.gates.find(g => g.id === wire.fromGateId);
     const to   = this.gates.find(g => g.id === wire.toGateId);
     if (!from || !to) return null;
 
-    const start = getPinWorldPos(from, 'output', wire.fromPinIndex);
-    const end   = getPinWorldPos(to,   'input',  wire.toPinIndex);
-
-    // Unterkante beider Bauteile für die Routing-Entscheidung (oben vs. unten)
+    const start      = getPinWorldPos(from, 'output', wire.fromPinIndex);
+    const end        = getPinWorldPos(to,   'input',  wire.toPinIndex);
     const fromBottom = from.y + getGateDimensions(from).h;
     const toBottom   = to.y   + getGateDimensions(to).h;
-
-    const waypoints = computeOrthogonalWaypoints(
+    const waypoints  = computeOrthogonalWaypoints(
       start.x, start.y, end.x, end.y, fromBottom, toBottom
     );
-    return [start, ...waypoints, end].map(p => `${p.x},${p.y}`).join(' ');
+    return [start, ...waypoints, end];
+  }
+
+  /** Gibt den SVG-Punktstring für eine Leitung zurück (nutzt getWireDisplayPoints). */
+  getWirePointsString(wire: WireConnection): string | null {
+    const pts = this.getWireDisplayPoints(wire);
+    return pts ? pts.map(p => `${p.x},${p.y}`).join(' ') : null;
+  }
+
+  /**
+   * Sucht die erste Leitung, deren Strecke weniger als WIRE_HIT_RADIUS Pixel
+   * vom Klickpunkt entfernt liegt.
+   * Wird im Wire-Modus genutzt, um an eine bestehende Leitung anzudocken.
+   */
+  private readonly WIRE_HIT_RADIUS = 8;
+
+  private findWireAt(lx: number, ly: number): WireConnection | null {
+    for (const wire of this.wires) {
+      const pts = this.getWireDisplayPoints(wire);
+      if (!pts || pts.length < 2) continue;
+      for (let i = 0; i < pts.length - 1; i++) {
+        if (this.distPointToSegment(lx, ly, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y)
+            <= this.WIRE_HIT_RADIUS) {
+          return wire;
+        }
+      }
+    }
+    return null;
+  }
+
+  /** Minimaler Abstand eines Punktes (px,py) zu einem Liniensegment (a→b). */
+  private distPointToSegment(
+    px: number, py: number,
+    ax: number, ay: number,
+    bx: number, by: number
+  ): number {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
   }
 
   getTentativePointsString(): string {
