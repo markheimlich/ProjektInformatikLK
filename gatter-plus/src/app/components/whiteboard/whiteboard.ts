@@ -177,13 +177,14 @@ export class Whiteboard implements OnDestroy {
   undo(): void {
     const snap = this.historyService.pop();
     if (!snap) return;
-    // Laufende Taktgeber stoppen – nach Undo ggf. neu starten
+    // Aktuellen Zustand auf Redo-Stack sichern, damit Redo wieder zurückspringen kann
+    this.historyService.pushRedo(this.gates, this.wires);
     this.stopClockIntervals();
-    this.gates           = snap.gates;
-    this.wires           = snap.wires;
-    this.selectedGateId  = null;
+    this.gates              = snap.gates;
+    this.wires              = snap.wires;
+    this.selectedGateId     = null;
     this.selectedGateIds.clear();
-    this.selectedWireId  = null;
+    this.selectedWireId     = null;
     this.editingLabelGateId = null;
     if (this.simulationMode) {
       this.startClockIntervals();
@@ -191,7 +192,30 @@ export class Whiteboard implements OnDestroy {
     }
   }
 
-  get canUndo(): boolean  { return this.historyService.canUndo(); }
+  /**
+   * Stellt den zuletzt rückgängig gemachten Zustand wieder her.
+   * Aufruf über Ctrl+Y / Ctrl+Shift+Z oder den Toolbar-Button.
+   */
+  redo(): void {
+    const snap = this.historyService.popRedo();
+    if (!snap) return;
+    // Aktuellen Zustand auf Undo-Stack legen (kein push(), um Redo-Stack nicht zu leeren)
+    this.historyService.pushUndo(this.gates, this.wires);
+    this.stopClockIntervals();
+    this.gates              = snap.gates;
+    this.wires              = snap.wires;
+    this.selectedGateId     = null;
+    this.selectedGateIds.clear();
+    this.selectedWireId     = null;
+    this.editingLabelGateId = null;
+    if (this.simulationMode) {
+      this.startClockIntervals();
+      this.recomputeSimulation();
+    }
+  }
+
+  get canUndo():  boolean { return this.historyService.canUndo(); }
+  get canRedo():  boolean { return this.historyService.canRedo(); }
   get canPaste(): boolean { return this.clipboard !== null; }
 
   // ─── Kopieren / Einfügen ───────────────────────────────────────────────────
@@ -422,7 +446,8 @@ export class Whiteboard implements OnDestroy {
   }
 
   /**
-   * Ctrl+Z → Undo  |  Ctrl+C → Kopieren  |  Ctrl+V → Einfügen
+   * Ctrl+Z → Undo  |  Ctrl+Y / Ctrl+Shift+Z → Redo
+   * Ctrl+C → Kopieren  |  Ctrl+V → Einfügen
    * Kein Auslösen wenn ein Eingabefeld fokussiert ist.
    */
   @HostListener('document:keydown', ['$event'])
@@ -432,7 +457,13 @@ export class Whiteboard implements OnDestroy {
     const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
     switch (event.key.toLowerCase()) {
       case 'z':
-        if (!isInput) { event.preventDefault(); this.undo(); }
+        if (!isInput) {
+          event.preventDefault();
+          if (event.shiftKey) this.redo(); else this.undo();
+        }
+        break;
+      case 'y':
+        if (!isInput) { event.preventDefault(); this.redo(); }
         break;
       case 'c':
         if (!isInput) { event.preventDefault(); this.copySelected(); }

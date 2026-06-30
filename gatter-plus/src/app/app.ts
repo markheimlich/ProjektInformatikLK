@@ -51,9 +51,11 @@ export class App {
   }
 
   onUndo():  void { this.whiteboardRef.undo(); }
+  onRedo():  void { this.whiteboardRef.redo(); }
   onCopy():  void { this.whiteboardRef.copySelected(); }
   onPaste(): void { this.whiteboardRef.pasteClipboard(); }
 
   get canUndo():  boolean { return this.whiteboardRef?.canUndo  ?? false; }
+  get canRedo():  boolean { return this.whiteboardRef?.canRedo  ?? false; }
   get canPaste(): boolean { return this.whiteboardRef?.canPaste ?? false; }
 }

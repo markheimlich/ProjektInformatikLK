@@ -97,6 +97,12 @@
       >↩ Undo</button>
       <button
         class="edit-btn"
+        title="Wiederholen (Ctrl+Y)"
+        [disabled]="!canRedo"
+        (click)="redoClicked.emit()"
+      >↪ Redo</button>
+      <button
+        class="edit-btn"
         title="Kopieren (Ctrl+C)"
         (click)="copyClicked.emit()"
       >⎘ Copy</button>

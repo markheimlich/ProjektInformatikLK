@@ -178,4 +178,54 @@ describe('HistoryService', () => {
     expect(snap!.wires[0].fromGateId).toBe('g1');
     expect(snap!.wires[0].toGateId).toBe('g2');
   });
+
+  // ── Redo-Stack ────────────────────────────────────────────────────────────
+
+  it('canRedo() ist false wenn Redo-Stack leer', () => {
+    expect(service.canRedo()).toBe(false);
+  });
+
+  it('canRedo() ist true nach pushRedo()', () => {
+    service.pushRedo([makeGate('g1')], []);
+    expect(service.canRedo()).toBe(true);
+  });
+
+  it('popRedo() gibt null zurück wenn Stack leer', () => {
+    expect(service.popRedo()).toBeNull();
+  });
+
+  it('popRedo() gibt letzten Redo-Schnappschuss zurück', () => {
+    service.pushRedo([makeGate('gR')], []);
+    const snap = service.popRedo();
+    expect(snap!.gates[0].id).toBe('gR');
+    expect(service.canRedo()).toBe(false);
+  });
+
+  it('push() leert den Redo-Stack', () => {
+    service.pushRedo([makeGate('gR')], []);
+    expect(service.canRedo()).toBe(true);
+    service.push([makeGate('g1')], []); // neue Aktion → Redo ungültig
+    expect(service.canRedo()).toBe(false);
+  });
+
+  it('pushUndo() leert den Redo-Stack NICHT', () => {
+    service.pushRedo([makeGate('gR')], []);
+    service.pushUndo([makeGate('g1')], []);
+    expect(service.canRedo()).toBe(true); // Redo bleibt erhalten
+    expect(service.canUndo()).toBe(true); // Undo auch
+  });
+
+  it('clear() leert auch den Redo-Stack', () => {
+    service.pushRedo([makeGate('gR')], []);
+    service.clear();
+    expect(service.canRedo()).toBe(false);
+    expect(service.redoSize).toBe(0);
+  });
+
+  it('Redo-Snapshots sind isolierte Kopien', () => {
+    const gates = [makeGate('gR', 10, 10)];
+    service.pushRedo(gates, []);
+    gates[0].x = 999;
+    expect(service.popRedo()!.gates[0].x).toBe(10);
+  });
 });
