@@ -48,9 +48,13 @@
 
   <div class="section">
     <div class="section-title">Beschriftung</div>
+    <!--
+      (change) statt (input): Undo-Schritt wird erst nach Verlassen des Felds
+      (Enter/Tab/Klick außerhalb) gespeichert, nicht bei jedem Tastendruck.
+    -->
     <input type="text" class="label-input"
       [value]="selectedGate.label ?? ''"
-      (input)="setLabel($any($event).target.value)"
+      (change)="setLabel($any($event).target.value)"
       [placeholder]="isTextLabel ? 'Label-Text' : 'Bauteil-Name…'"
     />
   </div>

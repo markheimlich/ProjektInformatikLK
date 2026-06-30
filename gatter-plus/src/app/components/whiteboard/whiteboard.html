@@ -205,10 +205,11 @@
 
         @let offsets = getPinOffsets(gate);
 
-        <!-- Ausgangs-Pins: grüne Punkte (nur für nicht verbundene Pins) -->
+        <!-- Ausgangs-Pins: grüne Punkte, nur wenn noch eine Verbindung erlaubt ist
+             oder dieser Pin gerade als Startpunkt einer Leitung dient -->
         @for (pin of offsets.outputs; track $index) {
           @let outPos = getPinWorldPosForTemplate(gate, 'output', $index);
-          @if (!isOutputPinConnected(gate.id, $index) || (wireDrawing?.fromGateId === gate.id && wireDrawing?.fromPinIndex === $index)) {
+          @if (canStartWireFromOutput(gate.id, $index) || (wireDrawing?.fromGateId === gate.id && wireDrawing?.fromPinIndex === $index)) {
             <div
               class="pin-dot output-pin"
               [style.left.px]="outPos.x - 5"

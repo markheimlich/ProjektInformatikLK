@@ -24,6 +24,7 @@ import {
   getGatePinOffsets, getGateDimensions,
   getPinWorldPos, isPointInGate,
   PIN_HIT_RADIUS, createGateInstance, computeOrthogonalWaypoints,
+  getOutputPinMaxConnections,
 } from '../../models/gate.model';
 import { DragStateService }    from '../../services/drag-state.service';
 import { SimulationService, ComponentSignalState } from '../../services/simulation.service';
@@ -302,7 +303,7 @@ export class Whiteboard implements OnDestroy {
   /** Speichert das Label und schließt das Inline-Eingabefeld. */
   commitLabel(): void {
     if (!this.editingLabelGateId) return;
-    this.pushHistory();
+    // pushHistory() wird in updateGate() aufgerufen — kein doppeltes Sichern nötig
     this.updateGate({ id: this.editingLabelGateId, label: this.editingLabelValue });
     this.editingLabelGateId = null;
   }
@@ -323,6 +324,9 @@ export class Whiteboard implements OnDestroy {
   toggleSimulation(): void {
     this.simulationMode = !this.simulationMode;
     if (this.simulationMode) {
+      // Automatisch in den Pan-Modus wechseln, damit Klicks auf Schalter
+      // und nicht versehentliche Leitungs-Aktionen ausgeführt werden.
+      this.setToolMode('pan');
       this.editingLabelGateId = null;   // Inline-Edit beim Start der Simulation schließen
       this.startClockIntervals();
       this.recomputeSimulation();
@@ -376,7 +380,14 @@ export class Whiteboard implements OnDestroy {
 
   // ─── Gatter-Eigenschaften aktualisieren ────────────────────────────────────
 
+  /**
+   * Wendet Eigenschafts-Änderungen auf ein Bauteil an.
+   * Speichert den aktuellen Zustand vor der Änderung im Undo-Stack,
+   * damit Rotation, Farbe, Label, Eingangsanzahl und Taktperiode
+   * alle mit Ctrl+Z rückgängig gemacht werden können.
+   */
   updateGate(changes: Partial<GateInstance> & { id: string }): void {
+    this.pushHistory(); // Zustand vor jeder Eigenschafts-Änderung sichern
     const periodChanged = changes.clockPeriodMs !== undefined;
     this.gates = this.gates.map(g =>
       g.id !== changes.id ? g : { ...g, ...changes }
@@ -412,6 +423,27 @@ export class Whiteboard implements OnDestroy {
   }
 
   // ─── Tastatur-Shortcuts ────────────────────────────────────────────────────
+
+  /**
+   * Escape → laufende Leitung abbrechen ODER Mehrfachauswahl aufheben.
+   * Verhindert, dass der Nutzer nach einem versehentlichen Klick im Wire-Modus
+   * feststeckt oder eine unübersichtliche Auswahl schwer löschen kann.
+   */
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (this.wireDrawing) {
+      this.wireDrawing = null; // Leitungs-Zeichnen abbrechen
+      return;
+    }
+    if (this.editingLabelGateId) {
+      this.cancelEditLabel();
+      return;
+    }
+    // Mehrfachauswahl oder Einzel-Auswahl aufheben
+    this.selectedGateIds.clear();
+    this.selectedGateId  = null;
+    this.selectedWireId  = null;
+  }
 
   /** Del/Backspace → ausgewähltes Bauteil oder Leitung löschen */
   @HostListener('document:keydown.delete', ['$event'])
@@ -603,6 +635,9 @@ export class Whiteboard implements OnDestroy {
       const dx = event.clientX - this.gateDragState.startMouseX;
       const dy = event.clientY - this.gateDragState.startMouseY;
       if (!this.gateDragStarted && Math.hypot(dx, dy) > 4) {
+        // Zustand EINMALIG vor dem ersten tatsächlichen Verschiebevorgang sichern,
+        // damit Undo das Bauteil an die ursprüngliche Position zurückbewegt.
+        this.pushHistory();
         this.gateDragStarted = true;
       }
       if (this.gateDragStarted) {
@@ -626,9 +661,11 @@ export class Whiteboard implements OnDestroy {
           const from = updatedGates.find(g => g.id === wire.fromGateId);
           const to   = updatedGates.find(g => g.id === wire.toGateId);
           if (!from || !to) return wire;
-          const start = getPinWorldPos(from, 'output', wire.fromPinIndex);
-          const end   = getPinWorldPos(to,   'input',  wire.toPinIndex);
-          return { ...wire, points: computeOrthogonalWaypoints(start.x, start.y, end.x, end.y) };
+          const start      = getPinWorldPos(from, 'output', wire.fromPinIndex);
+          const end        = getPinWorldPos(to,   'input',  wire.toPinIndex);
+          const fromBottom = from.y + getGateDimensions(from).h;
+          const toBottom   = to.y   + getGateDimensions(to).h;
+          return { ...wire, points: computeOrthogonalWaypoints(start.x, start.y, end.x, end.y, fromBottom, toBottom) };
         });
         if (this.simulationMode) this.recomputeSimulation();
       }
@@ -711,6 +748,8 @@ export class Whiteboard implements OnDestroy {
 
     if (!this.wireDrawing) {
       if (near?.pinType === 'output') {
+        // Verbindung nur starten wenn der Ausgangs-Pin noch freie Kapazität hat
+        if (!this.canStartWireFromOutput(near.gate.id, near.pinIndex)) return;
         const pos = getPinWorldPos(near.gate, 'output', near.pinIndex);
         this.wireDrawing = {
           fromGateId:   near.gate.id,
@@ -726,7 +765,10 @@ export class Whiteboard implements OnDestroy {
           w => w.toGateId === near.gate.id && w.toPinIndex === near.pinIndex
         );
         if (!alreadyUsed) {
-          const endPos = getPinWorldPos(near.gate, 'input', near.pinIndex);
+          const endPos  = getPinWorldPos(near.gate, 'input', near.pinIndex);
+          const fromGate = this.gates.find(g => g.id === this.wireDrawing!.fromGateId);
+          const fromBottom = fromGate ? fromGate.y + getGateDimensions(fromGate).h : undefined;
+          const toBottom   = near.gate.y + getGateDimensions(near.gate).h;
           const newWire: WireConnection = {
             id:           `wire-${++this.wireIdCounter}`,
             fromGateId:   this.wireDrawing.fromGateId,
@@ -734,7 +776,7 @@ export class Whiteboard implements OnDestroy {
             toGateId:     near.gate.id,
             toPinIndex:   near.pinIndex,
             points: computeOrthogonalWaypoints(
-              this.wireDrawing.x1, this.wireDrawing.y1, endPos.x, endPos.y
+              this.wireDrawing.x1, this.wireDrawing.y1, endPos.x, endPos.y, fromBottom, toBottom
             ),
           };
           this.pushHistory(); // Zustand vor dem Hinzufügen der Leitung sichern
@@ -834,6 +876,16 @@ export class Whiteboard implements OnDestroy {
     return map[gate.color] ?? '';
   }
 
+  /**
+   * Berechnet den SVG-Polyline-Punktstring für eine Leitung.
+   *
+   * Verbesserungen gegenüber der früheren Version:
+   * - Gerade Leitungen (gleiche Y) erzeugen keine überflüssigen Wegpunkte.
+   * - Rückwärts-Leitungen routen jetzt ober- ODER unterhalb, je nachdem,
+   *   welche Richtung die kürzere Strecke ergibt (statt immer nach oben).
+   * - Die untere Grenze wird aus echten Bauteil-Abmessungen berechnet,
+   *   nicht aus rohen Y-Koordinaten der Gate-Ecke.
+   */
   getWirePointsString(wire: WireConnection): string | null {
     const from = this.gates.find(g => g.id === wire.fromGateId);
     const to   = this.gates.find(g => g.id === wire.toGateId);
@@ -841,21 +893,14 @@ export class Whiteboard implements OnDestroy {
 
     const start = getPinWorldPos(from, 'output', wire.fromPinIndex);
     const end   = getPinWorldPos(to,   'input',  wire.toPinIndex);
-    const GAP   = 20;
 
-    let waypoints: { x: number; y: number }[];
-    if (end.x >= start.x) {
-      const midX = Math.round((start.x + end.x) / 2);
-      waypoints = [{ x: midX, y: start.y }, { x: midX, y: end.y }];
-    } else {
-      const topY = Math.min(from.y, to.y) - GAP;
-      waypoints = [
-        { x: start.x + GAP, y: start.y },
-        { x: start.x + GAP, y: topY },
-        { x: end.x - GAP,   y: topY },
-        { x: end.x - GAP,   y: end.y },
-      ];
-    }
+    // Unterkante beider Bauteile für die Routing-Entscheidung (oben vs. unten)
+    const fromBottom = from.y + getGateDimensions(from).h;
+    const toBottom   = to.y   + getGateDimensions(to).h;
+
+    const waypoints = computeOrthogonalWaypoints(
+      start.x, start.y, end.x, end.y, fromBottom, toBottom
+    );
     return [start, ...waypoints, end].map(p => `${p.x},${p.y}`).join(' ');
   }
 
@@ -896,6 +941,23 @@ export class Whiteboard implements OnDestroy {
 
   isInputPinConnected(gateId: string, pinIndex: number): boolean {
     return this.wires.some(w => w.toGateId === gateId && w.toPinIndex === pinIndex);
+  }
+
+  /**
+   * Gibt an, ob von diesem Ausgangs-Pin aus noch eine weitere Leitung gestartet
+   * werden darf. Vergleicht die aktuelle Verbindungsanzahl mit dem erlaubten Maximum
+   * des jeweiligen Bauteiltyps (siehe getOutputPinMaxConnections in gate.model.ts).
+   * Wird im Template für die Dot-Sichtbarkeit und in handleWireClick für die
+   * Verbindungslogik genutzt.
+   */
+  canStartWireFromOutput(gateId: string, pinIndex: number): boolean {
+    const gate = this.gates.find(g => g.id === gateId);
+    if (!gate) return false;
+    const max     = getOutputPinMaxConnections(gate.type);
+    const current = this.wires.filter(
+      w => w.fromGateId === gateId && w.fromPinIndex === pinIndex
+    ).length;
+    return current < max;
   }
 
   getWireJunctions(): { x: number; y: number; gateId: string; pinIndex: number }[] {

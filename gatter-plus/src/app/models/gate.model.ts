@@ -340,35 +340,67 @@ export function createGateInstance(
 }
 
 /**
+ * Gibt an, wie viele Leitungen von einem Ausgangs-Pin abgehen dürfen.
+ *
+ * Standardmäßig ist Fan-out (1 Ausgang → mehrere Eingänge) für alle Bausteine
+ * deaktiviert (Rückgabewert 1), da dies in einem Lern-Simulator übersichtlicher
+ * ist. Um Fan-out für einen bestimmten Typ zu erlauben, kann der Wert auf
+ * `Infinity` gesetzt werden.
+ */
+export function getOutputPinMaxConnections(_gateType: GateType): number {
+  // Für alle Typen: maximal 1 Verbindung pro Ausgangs-Pin (kein Fan-out)
+  return 1;
+}
+
+/**
  * Berechnet die Wegpunkte für eine orthogonale (rechtwinklige) Leitung.
  *
- * Vorwärts (x2 >= x1): Mittelknick horizontal.
- *   Start → (midX, y1) → (midX, y2) → Ende
+ * Vorwärts (x2 >= x1):
+ *   - Gleiche Y-Koordinate: gerade Linie ohne Waypoints.
+ *   - Unterschiedliche Y: Z-Form mit Mittelknick.
+ *       Start → (midX, y1) → (midX, y2) → Ende
  *
- * Rückwärts (x2 < x1): U-Kurve um die Komponenten herum.
- *   Start → (x1+GAP, y1) → (x1+GAP, midY) → (x2-GAP, midY) → (x2-GAP, y2) → Ende
+ * Rückwärts (x2 < x1): U-Kurve, Routingrichtung (oben/unten) wird anhand
+ *   der kürzeren Strecke gewählt, um unnötige Kreuzungen zu minimieren.
+ *   Start → (x1+GAP, y1) → (x1+GAP, routeY) → (x2-GAP, routeY) → (x2-GAP, y2) → Ende
  */
 export function computeOrthogonalWaypoints(
   x1: number, y1: number,
-  x2: number, y2: number
+  x2: number, y2: number,
+  fromGateBottomY?: number,
+  toGateBottomY?:   number
 ): { x: number; y: number }[] {
+  const GAP = 24;
+
   if (x2 >= x1) {
-    // Normalfall: Ziel liegt rechts → Mittelknick
+    // Normalfall: Ziel liegt rechts
+    if (Math.abs(y2 - y1) < 1) {
+      return []; // Gerade horizontale Linie — keine Zwischenpunkte nötig
+    }
     const midX = Math.round((x1 + x2) / 2);
     return [{ x: midX, y: y1 }, { x: midX, y: y2 }];
   }
+
   // Rückwärts-Fall: Ziel liegt links → U-Kurve
-  const GAP = 20;
   const xRight = x1 + GAP;
   const xLeft  = x2 - GAP;
-  // Wenn beide Pins auf ähnlicher Höhe sind → über die Komponenten routen
-  const midY = Math.abs(y2 - y1) > 40
-    ? Math.round((y1 + y2) / 2)
-    : Math.min(y1, y2) - 35;
+
+  // Obere Route: oberhalb beider beteiligter Pins
+  const aboveY = Math.min(y1, y2) - GAP;
+  // Untere Route: unterhalb beider beteiligter Pins (wenn Bauteil-Höhe bekannt)
+  const belowY = fromGateBottomY !== undefined && toGateBottomY !== undefined
+    ? Math.max(fromGateBottomY, toGateBottomY) + GAP
+    : Math.max(y1, y2) + GAP;
+
+  // Kürzere vertikale Strecke wählen
+  const costAbove = Math.abs(y1 - aboveY) + Math.abs(y2 - aboveY);
+  const costBelow = Math.abs(y1 - belowY) + Math.abs(y2 - belowY);
+  const routeY = costAbove <= costBelow ? aboveY : belowY;
+
   return [
     { x: xRight, y: y1 },
-    { x: xRight, y: midY },
-    { x: xLeft,  y: midY },
+    { x: xRight, y: routeY },
+    { x: xLeft,  y: routeY },
     { x: xLeft,  y: y2 },
   ];
 }

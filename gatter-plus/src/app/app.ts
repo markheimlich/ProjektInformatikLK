@@ -32,6 +32,10 @@ export class App {
   onSimulationToggle(): void {
     this.whiteboardRef.toggleSimulation();
     this.simulationMode = this.whiteboardRef.simulationMode;
+    // Toolbar-Anzeige mit dem Modus des Whiteboards synchronisieren:
+    // toggleSimulation() schaltet intern auf Pan um, daher muss activeTool
+    // hier nachgezogen werden, damit der Toolbar-Button korrekt hervorgehoben ist.
+    this.activeTool = this.whiteboardRef.toolMode;
   }
 
   /** Ausgewähltes Bauteil (für Properties Panel) */
