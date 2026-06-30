@@ -141,7 +141,7 @@ export class Whiteboard implements OnDestroy {
       // Alle Eingänge, Taktgeber und FF-Zustände zurücksetzen
       this.gates = this.gates.map(g => {
         if (g.type === 'input' || g.type === 'clock-gen') return { ...g, inputValue: false };
-        if (g.type === 'jk-ff') return { ...g, ffState: false };
+        if (g.type === 'jk-ff') return { ...g, ffState: false, ffPrevClock: false };
         return g;
       });
       this.signalStates.clear();

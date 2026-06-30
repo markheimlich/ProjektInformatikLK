@@ -56,6 +56,12 @@ export interface GateInstance {
    */
   ffState?: boolean;
   /**
+   * Nur für type === 'jk-ff': Taktzustand des letzten Schritts.
+   * Dient zur Erkennung der steigenden Taktflanke (0→1) — der JK-FF ist
+   * flankengesteuert und schaltet nur bei dieser Flanke.
+   */
+  ffPrevClock?: boolean;
+  /**
    * Nur für type === 'text-label': anzuzeigender Text.
    */
   label?: string;
@@ -195,18 +201,22 @@ export function getGatePinOffsets(
 
     case 'jk-ff':
       // Eingänge (oben→unten): S, J, C (Takt), K, R
+      // CSS: .pins-in { padding: 8px 0; space-around; h=100px }
+      //   → Y_i = 8 + (84/5)*(i+0.5)  =  16, 33, 50, 67, 84
       // Ausgänge: Q (oben), Q̄ (unten)
+      // CSS: .pins-out { padding: 20px 0; space-around; h=100px }
+      //   → Y_i = 20 + (60/2)*(i+0.5)  =  35, 65
       return {
         inputs: [
-          { x: 0, y: 15 }, // S
-          { x: 0, y: 30 }, // J
+          { x: 0, y: 16 }, // S
+          { x: 0, y: 33 }, // J
           { x: 0, y: 50 }, // C (Takt)
-          { x: 0, y: 70 }, // K
-          { x: 0, y: 85 }, // R
+          { x: 0, y: 67 }, // K
+          { x: 0, y: 84 }, // R
         ],
         outputs: [
-          { x: dim.w, y: 30 }, // Q
-          { x: dim.w, y: 70 }, // Q̄
+          { x: dim.w, y: 35 }, // Q
+          { x: dim.w, y: 65 }, // Q̄
         ],
       };
 
@@ -371,7 +381,7 @@ export const GATE_PIN_OFFSETS: Record<GateType, { inputs: PinOffset[]; outputs: 
   or:           { inputs: [{ x:0, y:18 }, { x:0, y:34 }], outputs: [{ x:76, y:26 }] },
   not:          { inputs: [{ x:0, y:26 }],                outputs: [{ x:76, y:26 }] },
   xor:          { inputs: [{ x:0, y:18 }, { x:0, y:34 }], outputs: [{ x:76, y:26 }] },
-  'jk-ff':      { inputs: [{ x:0,y:15 },{x:0,y:30},{x:0,y:50},{x:0,y:70},{x:0,y:85}], outputs: [{ x:76,y:30 },{ x:76,y:70 }] },
+  'jk-ff':      { inputs: [{ x:0,y:16 },{x:0,y:33},{x:0,y:50},{x:0,y:67},{x:0,y:84}], outputs: [{ x:76,y:35 },{ x:76,y:65 }] },
   'half-adder': { inputs: [{ x:0, y:18 }, { x:0, y:34 }], outputs: [{ x:76,y:18 }, { x:76,y:34 }] },
   'full-adder': { inputs: [{ x:0,y:14 },{x:0,y:35},{x:0,y:56}], outputs: [{ x:76,y:22 },{ x:76,y:48 }] },
   input:        { inputs: [],             outputs: [{ x:76, y:26 }] },
