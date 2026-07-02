@@ -1,28 +1,37 @@
-import { Component, ViewChild } from '@angular/core';
+import { Component, inject, OnInit, ViewChild } from '@angular/core';
+import { MenuBar }       from './components/menu-bar/menu-bar';
 import { ToolbarTop }    from './components/toolbar-top/toolbar-top';
 import { ToolbarLeft }   from './components/toolbar-left/toolbar-left';
 import { Whiteboard }    from './components/whiteboard/whiteboard';
 import { PropertiesPanel, GatePropertyChange } from './components/properties-panel/properties-panel';
 import { ToolMode }      from './components/toolbar-left/toolbar-left';
 import { GateInstance }  from './models/gate.model';
+import { ThemeService }  from './services/theme.service';
 
 /**
  * Root-Komponente von GatterPLUS.
  *
- * Layout (links → rechts):
- *   Toolbar-Left | Whiteboard | Properties-Panel (wenn Bauteil ausgewählt)
+ * Layout (oben → unten):
+ *   Menu-Bar | Toolbar-Top | (Toolbar-Left | Whiteboard | Properties-Panel)
  */
 @Component({
   selector: 'app-root',
-  imports: [ToolbarTop, ToolbarLeft, Whiteboard, PropertiesPanel],
+  imports: [MenuBar, ToolbarTop, ToolbarLeft, Whiteboard, PropertiesPanel],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
-export class App {
+export class App implements OnInit {
   @ViewChild(Whiteboard) whiteboardRef!: Whiteboard;
+
+  private readonly themeService = inject(ThemeService);
 
   activeTool:    ToolMode = 'pan';
   simulationMode = false;
+
+  /** Beim Start das gespeicherte Theme laden und anwenden. */
+  ngOnInit(): void {
+    this.themeService.loadTheme();
+  }
 
   onToolSelected(tool: ToolMode): void {
     this.activeTool = tool;

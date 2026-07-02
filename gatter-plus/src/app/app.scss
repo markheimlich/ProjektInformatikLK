@@ -10,6 +10,9 @@
   width: 100vw;
   /* Kein Scrollbalken auf der Root-Ebene */
   overflow: hidden;
+  /* App-Hintergrund (zeigt sich u.a. im Rand um die Zeichenfläche) */
+  background: var(--bg-app);
+  transition: background-color 0.2s ease;
 }
 
 /* Hauptbereich: linke Toolbar und Whiteboard nebeneinander */
@@ -20,4 +23,5 @@
   flex: 1;
   /* Kein Überlauf, Whiteboard verwaltet seinen eigenen Scroll */
   overflow: hidden;
+  background: var(--bg-app);
 }

@@ -1,0 +1,57 @@
+<!--
+  Klassische Menüleiste: Datei | Hilfe   ...   Theme-Umschalter
+  Dropdowns öffnen per Klick; ein Klick außerhalb schließt sie (siehe menu-bar.ts).
+-->
+<nav class="menu-bar">
+
+  <!-- ── Menü: Datei ─────────────────────────────────────────────────────── -->
+  <div class="menu-item" [class.open]="openMenu === 'datei'">
+    <button class="menu-title" (click)="toggleMenu('datei', $event)">Datei</button>
+
+    @if (openMenu === 'datei') {
+      <!-- stopPropagation, damit ein Klick INS Dropdown es nicht sofort schließt -->
+      <div class="dropdown" (click)="$event.stopPropagation()">
+        <button class="dropdown-item" (click)="onNew()">Neu</button>
+
+        <div class="dropdown-sep"></div>
+
+        <button class="dropdown-item" (click)="onOpen()">Öffnen</button>
+        <button class="dropdown-item" (click)="onSave()">Speichern</button>
+        <button class="dropdown-item" (click)="onSaveAs()">Speichern unter</button>
+
+        <div class="dropdown-sep"></div>
+
+        <button class="dropdown-item" (click)="onImportLws()">Importieren (LWS)</button>
+        <button class="dropdown-item" (click)="onConvertLws()">Konvertieren (LWS)</button>
+
+        <div class="dropdown-sep"></div>
+
+        <button class="dropdown-item" (click)="onExit()">Beenden</button>
+      </div>
+    }
+  </div>
+
+  <!-- ── Menü: Hilfe ─────────────────────────────────────────────────────── -->
+  <div class="menu-item" [class.open]="openMenu === 'hilfe'">
+    <button class="menu-title" (click)="toggleMenu('hilfe', $event)">Hilfe</button>
+
+    @if (openMenu === 'hilfe') {
+      <div class="dropdown" (click)="$event.stopPropagation()">
+        <button class="dropdown-item" (click)="onAbout()">About</button>
+      </div>
+    }
+  </div>
+
+  <!-- Spacer schiebt den Theme-Umschalter nach rechts -->
+  <div class="spacer"></div>
+
+  <!-- ── Theme-Umschalter (Light/Dark) ───────────────────────────────────── -->
+  <button
+    class="theme-toggle"
+    [title]="isDark ? 'Zu Light Mode wechseln' : 'Zu Dark Mode wechseln'"
+    (click)="toggleTheme()"
+  >
+    {{ isDark ? '☀️ Light' : '🌙 Dark' }}
+  </button>
+
+</nav>

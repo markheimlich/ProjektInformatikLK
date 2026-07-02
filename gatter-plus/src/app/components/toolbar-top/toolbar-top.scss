@@ -1,31 +1,40 @@
-/* Obere Toolbar */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Obere Werkzeugleiste
+   Farben kommen zentral aus den CSS Custom Properties (styles.scss),
+   dadurch funktioniert Light/Dark Mode automatisch.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 .toolbar-top {
   display: flex;
   align-items: center;
   min-height: 60px;
-  background: #1e293b;
-  color: #ffffff;
+  /* Heller blaugrauer Hintergrund (wie Referenzbild) */
+  background: var(--toolbar-bg);
+  color: var(--toolbar-text);
   padding: 0 12px;
   gap: 0;
   flex-shrink: 0;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid var(--menu-border);
   z-index: 10;
   overflow-x: auto; /* horizontales Scrollen auf kleinen Bildschirmen */
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
+/* App-Name links */
 .app-title {
   font-size: 18px;
   font-weight: 700;
-  color: #60a5fa;
+  color: var(--toolbar-title);
   letter-spacing: 0.05em;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
+/* Vertikale Trennlinie zwischen Gruppen */
 .divider {
   width: 1px;
   height: 36px;
-  background: #334155;
+  background: var(--divider);
   margin: 0 10px;
   flex-shrink: 0;
 }
@@ -40,7 +49,8 @@
 
 .group-label {
   font-size: 9px;
-  color: #64748b;
+  color: var(--toolbar-text);
+  opacity: 0.7;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 600;
@@ -50,44 +60,52 @@
 .palette-items {
   display: flex;
   flex-direction: row;
-  gap: 2px;
+  gap: 4px;
 }
 
-/* Einzelnes Palette-Item */
+/* Einzelnes Palette-Item: quadratischer grauer Button mit dunklem Rahmen */
 .palette-item {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 2px;
-  padding: 4px 8px;
+  padding: 4px 6px;
+  min-width: 46px;
+  border: 1.5px solid var(--btn-border);
   border-radius: 6px;
+  background: var(--btn-bg);
+  color: var(--btn-text);
   cursor: grab;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 
   &:hover {
-    background: #334155;
+    background: var(--btn-hover-bg);
   }
+  /* Beim Ziehen kurz gelb-orange hervorheben (aktiver Zustand laut Referenz) */
   &:active {
     cursor: grabbing;
-    background: #475569;
+    background: var(--btn-active-bg);
+    border-color: var(--btn-active-border);
+    color: var(--btn-active-text);
   }
 }
 
 .item-name {
   font-size: 9px;
-  color: #94a3b8;
+  color: inherit;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-/* Bearbeiten-Buttons (Undo / Copy / Paste) */
+/* Bearbeiten-Buttons (Undo / Redo / Copy / Paste) */
 .edit-btn {
   padding: 5px 10px;
   border-radius: 5px;
-  border: 1px solid #475569;
-  background: transparent;
-  color: #cbd5e1;
+  border: 1px solid var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--btn-text);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -96,46 +114,43 @@
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 
   &:hover:not(:disabled) {
-    background: #334155;
-    border-color: #94a3b8;
-    color: #ffffff;
+    background: var(--btn-hover-bg);
   }
 
   &:disabled {
-    opacity: 0.35;
+    opacity: 0.4;
     cursor: default;
   }
 }
 
-/* Spacer schiebt Simulation-Button nach rechts */
+/* Spacer schiebt den Power-Button nach rechts */
 .spacer { flex: 1; }
 
-/* Simulations-Start/Stop-Button */
+/* ─── Simulations-/Power-Button (rund, oben rechts) ────────────────────────── */
 .sim-btn {
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: 2px solid #22c55e;
-  background: transparent;
-  color: #22c55e;
-  font-size: 13px;
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--power-border);
+  background: var(--power-bg);
+  color: var(--power-icon);
+  font-size: 18px;
+  line-height: 1;
   cursor: pointer;
-  white-space: nowrap;
   flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 
   &:hover {
-    background: #22c55e;
-    color: #ffffff;
+    filter: brightness(1.05);
   }
 
-  /* Aktiver Modus: roter Stop-Button */
+  /* Simulation aktiv: gelb-orange leuchtend */
   &.active {
-    border-color: #ef4444;
-    color: #ef4444;
-    &:hover {
-      background: #ef4444;
-      color: #ffffff;
-    }
+    background: var(--power-on-bg);
+    border-color: var(--power-on-border);
+    color: var(--power-on-icon);
   }
 }

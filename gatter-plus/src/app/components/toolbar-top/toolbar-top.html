@@ -118,14 +118,14 @@
   <!-- Spacer schiebt Simulations-Button nach rechts -->
   <div class="spacer"></div>
 
-  <!-- Simulations-Toggle -->
+  <!-- Simulations-Toggle: runder Power-Button (gelb = läuft, grau = gestoppt) -->
   <button
     class="sim-btn"
     [class.active]="simulationMode"
     title="{{ simulationMode ? 'Simulation stoppen' : 'Simulation starten (F5)' }}"
     (click)="simulationToggle.emit()"
   >
-    {{ simulationMode ? '⏹ Stop' : '▶ Start' }}
+    ⏻
   </button>
 
 </header>
