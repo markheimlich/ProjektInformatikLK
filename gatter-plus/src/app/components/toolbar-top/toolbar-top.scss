@@ -63,21 +63,34 @@
   gap: 4px;
 }
 
-/* Einzelnes Palette-Item: gelb-orange Quadrat mit dunklem Rahmen (Referenzdesign).
-   Enthält nur noch das Bauteil-Icon (kein Textlabel mehr darunter),
-   daher genügt reines Zentrieren ohne "gap". */
+/*
+ * Einzelnes Palette-Item: gelb-orange Kästchen mit dunklem Rahmen (Referenzdesign).
+ * Größe (64x56) ist bewusst etwas größer als der reine Bauteil-Rahmen (60x44,
+ * Draht+Körper+Draht) gewählt, damit die eigene gelbe Fläche/der Rahmen als
+ * sichtbarer Rand um das Bauteil-Icon herum erscheint statt komplett vom
+ * (undurchsichtig weißen) Gatter-Körper verdeckt zu werden.
+ *
+ * Die eigentlichen Gatter-Vorschau-Komponenten (app-and-gate usw.) haben eine
+ * fest codierte weiße .gate-body-Füllung. Statt jede einzelne Gatter-SCSS
+ * anzufassen, wird hier ein ::after-Overlay mit mix-blend-mode:color über den
+ * gesamten Button gelegt — das färbt den weißen Gatter-Körper exakt im Ton von
+ * --btn-bg ein (deutlich präziser als ein sepia/saturate-Filter, der bei
+ * reinem Weiß leicht ins Grünlich-Gelbe abdriftet statt sauberes Gold zu treffen).
+ */
 .palette-item {
+  position: relative; /* Anker für das Farb-Overlay */
+  overflow: hidden;    /* Overlay bleibt innerhalb der abgerundeten Ecken */
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 56px;
   border: 1.5px solid var(--btn-border);
   border-radius: 6px;
   background: var(--btn-bg);
   color: var(--btn-text);
   cursor: grab;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, filter 0.15s, opacity 0.15s;
 
   &:hover {
     background: var(--btn-hover-bg);
@@ -89,6 +102,35 @@
     border-color: var(--btn-active-border);
     color: var(--btn-active-text);
   }
+}
+
+/* Gold/Gelb-Overlay: liegt über dem weißen Gatter-Körper und färbt ihn per
+   Blend-Mode exakt im --btn-bg-Ton ein, ohne die eigentliche Gatter-SCSS
+   anzufassen. pointer-events:none, damit Klicks/Drag weiterhin durchgehen. */
+.palette-item:not(.io-item)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--btn-bg);
+  mix-blend-mode: color;
+  pointer-events: none;
+}
+
+/* Ein-/Ausgang-Bauteile (Schalter, LED, Takt, Label) behalten ihre eigene,
+   nicht-gelbe Optik bei (siehe Referenzbild) — kein Overlay im Normalzustand.
+   Der Deaktiviert-Zustand unten greift trotzdem einheitlich für alle Typen. */
+
+/*
+ * Deaktivierter Zustand: nur während die Simulation läuft.
+ * "Nur deaktivierte Elemente dürfen grau wirken" — hier via Graustufen-Filter
+ * auf dem gesamten Button (überschreibt sowohl die Gold-Tönung als auch die
+ * unveränderte io-item-Optik einheitlich). Zusätzlich pointer-events:none
+ * und ein Guard in onGateMouseDown() verhindern das tatsächliche Platzieren.
+ */
+.palette-item.disabled {
+  filter: grayscale(1) opacity(0.55);
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /*

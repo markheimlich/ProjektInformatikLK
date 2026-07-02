@@ -52,8 +52,14 @@ export class ToolbarTop {
   /**
    * Startet einen Drag-Vorgang aus der Palette.
    * Kein document:mouseup hier – das Whiteboard übernimmt das Cleanup.
+   *
+   * Während der Simulation läuft das Platzieren neuer Bauteile nicht mehr
+   * sinnvoll (die Buttons sind dann auch visuell grau/deaktiviert) — der
+   * Guard hier stellt sicher, dass kein Drag startet, selbst wenn der Klick
+   * trotz pointer-events:none irgendwie durchkommt.
    */
   onGateMouseDown(event: MouseEvent, gateType: GateType): void {
+    if (this.simulationMode) return;
     event.preventDefault();
     this.dragState.startDrag(gateType);
   }
