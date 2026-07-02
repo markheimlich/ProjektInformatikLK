@@ -63,15 +63,15 @@
   gap: 4px;
 }
 
-/* Einzelnes Palette-Item: quadratischer grauer Button mit dunklem Rahmen */
+/* Einzelnes Palette-Item: gelb-orange Quadrat mit dunklem Rahmen (Referenzdesign).
+   Enthält nur noch das Bauteil-Icon (kein Textlabel mehr darunter),
+   daher genügt reines Zentrieren ohne "gap". */
 .palette-item {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 4px 6px;
-  min-width: 46px;
+  width: 48px;
+  height: 48px;
   border: 1.5px solid var(--btn-border);
   border-radius: 6px;
   background: var(--btn-bg);
@@ -82,7 +82,7 @@
   &:hover {
     background: var(--btn-hover-bg);
   }
-  /* Beim Ziehen kurz gelb-orange hervorheben (aktiver Zustand laut Referenz) */
+  /* Beim Ziehen kräftigeres Orange (Feedback, dass der Drag begonnen hat) */
   &:active {
     cursor: grabbing;
     background: var(--btn-active-bg);
@@ -91,36 +91,44 @@
   }
 }
 
-.item-name {
-  font-size: 9px;
-  color: inherit;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-/* Bearbeiten-Buttons (Undo / Redo / Copy / Paste) */
-.edit-btn {
-  padding: 5px 10px;
-  border-radius: 5px;
-  border: 1px solid var(--btn-border);
+/*
+ * Werkzeug-Toggle-Buttons (Pan / Leitung): gleiche Größe und Grundfarbe wie
+ * die Bauteil-Buttons, damit sie optisch zur restlichen gelben Toolbar passen.
+ * Der SVG-Icon-Inhalt wird über Flexbox exakt horizontal und vertikal zentriert.
+ */
+.tool-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: 1.5px solid var(--btn-border);
+  border-radius: 6px;
   background: var(--btn-bg);
   color: var(--btn-text);
-  font-size: 11px;
-  font-weight: 600;
   cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 
-  &:hover:not(:disabled) {
+  &:hover {
     background: var(--btn-hover-bg);
   }
 
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
+  /* Aktuell ausgewähltes Werkzeug: eigener Rahmen-Akzent statt reinem Gelb,
+     damit die Auswahl trotz durchgängig gelber Buttons klar erkennbar bleibt */
+  &.selected {
+    background: var(--btn-selected-bg);
+    border-color: var(--btn-selected-border);
+    border-width: 2px;
+    color: var(--btn-selected-text);
   }
+}
+
+/* SVG-Icon innerhalb der Werkzeug-Buttons: feste Größe, exakt zentriert */
+.tool-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 
 /* Spacer schiebt den Power-Button nach rechts */

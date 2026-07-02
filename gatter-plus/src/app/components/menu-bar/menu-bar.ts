@@ -1,11 +1,14 @@
-import { Component, HostListener, inject } from '@angular/core';
+import { Component, EventEmitter, HostListener, inject, Input, Output } from '@angular/core';
 import { ThemeService } from '../../services/theme.service';
+
+/** Name eines Menüs in der Leiste. */
+export type MenuName = 'datei' | 'bearbeiten' | 'hilfe';
 
 /**
  * Klassische Desktop-Menüleiste (wie LogikSim 0.6.4).
  *
- * Enthält die Menüs „Datei" und „Hilfe" mit Klick-Dropdowns sowie rechts
- * einen Umschalter für Light/Dark Mode.
+ * Enthält die Menüs „Datei", „Bearbeiten" und „Hilfe" mit Klick-Dropdowns
+ * sowie rechts einen Umschalter für Light/Dark Mode.
  *
  * Verhalten:
  * - Klick auf einen Menütitel öffnet das zugehörige Dropdown.
@@ -15,6 +18,9 @@ import { ThemeService } from '../../services/theme.service';
  *
  * Die Datei-Aktionen sind aktuell Platzhalter (console.log) und können später
  * mit echter Logik (Speichern/Laden usw.) gefüllt werden.
+ * Die Bearbeiten-Aktionen (Undo/Redo/Copy/Paste) nutzen die bereits im
+ * Whiteboard vorhandene echte Logik — sie kommen als Outputs von außen
+ * (siehe app.ts: onUndo/onRedo/onCopy/onPaste).
  */
 @Component({
   selector: 'app-menu-bar',
@@ -27,10 +33,20 @@ export class MenuBar {
   private readonly themeService = inject(ThemeService);
 
   /**
-   * Name des aktuell geöffneten Menüs ('datei' | 'hilfe') oder null,
-   * wenn kein Dropdown offen ist.
+   * Name des aktuell geöffneten Menüs oder null, wenn kein Dropdown offen ist.
    */
-  openMenu: 'datei' | 'hilfe' | null = null;
+  openMenu: MenuName | null = null;
+
+  /** Ob Undo/Redo/Paste im Bearbeiten-Menü aktuell möglich sind (steuert Deaktivierung). */
+  @Input() canUndo  = false;
+  @Input() canRedo  = false;
+  @Input() canPaste = false;
+
+  /** Wird ausgelöst, wenn der Benutzer den jeweiligen Bearbeiten-Eintrag anklickt. */
+  @Output() undoClicked  = new EventEmitter<void>();
+  @Output() redoClicked  = new EventEmitter<void>();
+  @Output() copyClicked  = new EventEmitter<void>();
+  @Output() pasteClicked = new EventEmitter<void>();
 
   /** True, wenn gerade Dark Mode aktiv ist (für das Umschalt-Icon). */
   get isDark(): boolean {
@@ -41,7 +57,7 @@ export class MenuBar {
    * Öffnet oder schließt ein Menü.
    * Klick auf den bereits offenen Titel schließt ihn (Toggle-Verhalten).
    */
-  toggleMenu(menu: 'datei' | 'hilfe', event: MouseEvent): void {
+  toggleMenu(menu: MenuName, event: MouseEvent): void {
     event.stopPropagation(); // verhindert sofortiges Schließen durch document-Listener
     this.openMenu = this.openMenu === menu ? null : menu;
   }
@@ -69,6 +85,34 @@ export class MenuBar {
   /** Wechselt zwischen Light und Dark Mode. */
   toggleTheme(): void {
     this.themeService.toggleTheme();
+  }
+
+  // ─── Bearbeiten-Aktionen ────────────────────────────────────────────────────
+  // Rufen die bereits vorhandene echte Undo/Redo/Copy/Paste-Logik im Whiteboard
+  // auf (weitergeleitet über die Outputs). Bei deaktivierten Einträgen (z.B.
+  // kein Undo möglich) wird nichts ausgelöst.
+
+  onUndo(): void {
+    if (!this.canUndo) return;
+    this.undoClicked.emit();
+    this.closeMenu();
+  }
+
+  onRedo(): void {
+    if (!this.canRedo) return;
+    this.redoClicked.emit();
+    this.closeMenu();
+  }
+
+  onCopy(): void {
+    this.copyClicked.emit();
+    this.closeMenu();
+  }
+
+  onPaste(): void {
+    if (!this.canPaste) return;
+    this.pasteClicked.emit();
+    this.closeMenu();
   }
 
   // ─── Datei-Aktionen (Platzhalter) ──────────────────────────────────────────

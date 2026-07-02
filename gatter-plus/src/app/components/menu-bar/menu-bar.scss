@@ -55,9 +55,13 @@
   z-index: 40;
 }
 
-/* Einzelner Menüeintrag im Dropdown */
+/* Einzelner Menüeintrag im Dropdown.
+   Flex-Row, damit Label links und Tastenkürzel rechts ausgerichtet werden. */
 .dropdown-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
   width: 100%;
   text-align: left;
   border: none;
@@ -70,10 +74,30 @@
   white-space: nowrap;
   transition: background 0.1s;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: var(--accent);
     color: #ffffff;
+
+    /* Shortcut-Text im Hover an die weiße Textfarbe angleichen */
+    .shortcut {
+      color: inherit;
+      opacity: 0.85;
+    }
   }
+
+  /* Deaktivierter Eintrag (z.B. Undo ohne Historie): grau, nicht klickbar.
+     Einzige Stelle, an der ein Bearbeiten-Element grau wirken darf. */
+  &:disabled {
+    color: var(--btn-disabled-text);
+    cursor: default;
+  }
+}
+
+/* Tastenkürzel-Anzeige rechts im Menüeintrag (z.B. "Strg+Z") */
+.shortcut {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: inherit;
 }
 
 /* Trennlinie zwischen Menügruppen */

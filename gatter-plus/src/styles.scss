@@ -28,15 +28,25 @@
   --toolbar-text:        #2a2f45;
   --divider:             rgba(30, 35, 64, 0.18);
 
-  /* Bauteil-/Palette-Buttons: graue Quadrate mit dunklem Rahmen */
-  --btn-bg:              #cccccc;
+  /* Bauteil-/Werkzeug-Buttons: gelb-orange Quadrate mit dunklem Rahmen
+     (Referenzdesign) — nur deaktivierte Elemente sind grau. */
+  --btn-bg:              #f5b342;
   --btn-border:          #3a3a3a;
-  --btn-text:            #1e293b;
-  --btn-hover-bg:        #dcdcdc;
-  /* Aktiver/ausgewählter Button: gelb-orange */
-  --btn-active-bg:       #f5b342;
-  --btn-active-border:   #b9791a;
-  --btn-active-text:     #3a2a00;
+  --btn-text:            #3a2a00;
+  --btn-hover-bg:        #f8c364;
+  /* Zustand "gedrückt" (Bauteil wird gerade gezogen) — kräftigeres Orange */
+  --btn-active-bg:       #e89b1f;
+  --btn-active-border:   #8a5a12;
+  --btn-active-text:     #2a1d00;
+  /* Zustand "ausgewählt" (z.B. aktuell aktives Werkzeug Pan/Leitung) —
+     eigener Blau-Akzent-Rahmen, damit er sich vom gelben Grundton abhebt */
+  --btn-selected-bg:     #e89b1f;
+  --btn-selected-border: #1d4ed8;
+  --btn-selected-text:   #2a1d00;
+  /* Deaktivierte Elemente: grau (einzige erlaubte graue Fläche) */
+  --btn-disabled-bg:     #d4d4d4;
+  --btn-disabled-border: #9a9a9a;
+  --btn-disabled-text:   #7a7a7a;
 
   /* Seitenpanels (links, rechts) */
   --panel-bg:            #f8fafc;
@@ -96,13 +106,19 @@
   --toolbar-text:        #cbd3f0;
   --divider:             rgba(255, 255, 255, 0.14);
 
-  --btn-bg:              #3a4055;
+  --btn-bg:              #f5b342;
   --btn-border:          #10131b;
-  --btn-text:            #e2e8f0;
-  --btn-hover-bg:        #464d66;
-  --btn-active-bg:       #f5b342;
+  --btn-text:            #2a1d00;
+  --btn-hover-bg:        #f8c364;
+  --btn-active-bg:       #e89b1f;
   --btn-active-border:   #8a5a12;
   --btn-active-text:     #2a1d00;
+  --btn-selected-bg:     #e89b1f;
+  --btn-selected-border: #60a5fa;
+  --btn-selected-text:   #2a1d00;
+  --btn-disabled-bg:     #3a4055;
+  --btn-disabled-border: #4a5170;
+  --btn-disabled-text:   #6b7590;
 
   --panel-bg:            #1c1f2b;
   --panel-header-bg:     #242836;

@@ -12,6 +12,7 @@ import { ClockGen }    from '../io/clock-gen/clock-gen';
 import { TextLabel }   from '../io/text-label/text-label';
 import { DragStateService } from '../../services/drag-state.service';
 import { GateType } from '../../models/gate.model';
+import { ToolMode }  from '../toolbar-left/toolbar-left';
 
 /**
  * Obere horizontale Toolbar.
@@ -21,6 +22,9 @@ import { GateType } from '../../models/gate.model';
  * - Kombinatorik: Halbaddierer (HA), Volladdierer (VA)
  * - Flip-Flops:  JK-FF
  * - Ein/Ausgang: Eingangs-Schalter, Ausgangs-LED, Taktgeber, Text-Label
+ * - Werkzeug:    Pan (Verschieben), Leitung (Wire) — SVG-Icon-Buttons an der
+ *                Stelle, an der zuvor die Bearbeiten-Buttons standen
+ *                (Undo/Redo/Copy/Paste sind in die Menüleiste umgezogen).
  */
 @Component({
   selector: 'app-toolbar-top',
@@ -36,15 +40,14 @@ export class ToolbarTop {
   private readonly dragState = inject(DragStateService);
 
   @Input() simulationMode = false;
-  @Input() canUndo  = false;
-  @Input() canRedo  = false;
-  @Input() canPaste = false;
+
+  /** Welches Werkzeug (Pan/Wire) gerade aktiv ist (kommt vom Whiteboard über App). */
+  @Input() activeTool: ToolMode = 'pan';
 
   @Output() simulationToggle = new EventEmitter<void>();
-  @Output() undoClicked      = new EventEmitter<void>();
-  @Output() redoClicked      = new EventEmitter<void>();
-  @Output() copyClicked      = new EventEmitter<void>();
-  @Output() pasteClicked     = new EventEmitter<void>();
+
+  /** Wird emittiert, wenn der Benutzer Pan oder Leitung auswählt. */
+  @Output() toolSelected = new EventEmitter<ToolMode>();
 
   /**
    * Startet einen Drag-Vorgang aus der Palette.
@@ -53,5 +56,10 @@ export class ToolbarTop {
   onGateMouseDown(event: MouseEvent, gateType: GateType): void {
     event.preventDefault();
     this.dragState.startDrag(gateType);
+  }
+
+  /** Wechselt das aktive Werkzeug (Pan/Leitung). */
+  selectTool(tool: ToolMode): void {
+    this.toolSelected.emit(tool);
   }
 }

@@ -1,7 +1,6 @@
 import { Component, inject, OnInit, ViewChild } from '@angular/core';
 import { MenuBar }       from './components/menu-bar/menu-bar';
 import { ToolbarTop }    from './components/toolbar-top/toolbar-top';
-import { ToolbarLeft }   from './components/toolbar-left/toolbar-left';
 import { Whiteboard }    from './components/whiteboard/whiteboard';
 import { PropertiesPanel, GatePropertyChange } from './components/properties-panel/properties-panel';
 import { ToolMode }      from './components/toolbar-left/toolbar-left';
@@ -12,11 +11,19 @@ import { ThemeService }  from './services/theme.service';
  * Root-Komponente von GatterPLUS.
  *
  * Layout (oben → unten):
- *   Menu-Bar | Toolbar-Top | (Toolbar-Left | Whiteboard | Properties-Panel)
+ *   Menu-Bar (Datei/Bearbeiten/Hilfe) | Toolbar-Top (Paletten + Pan/Leitung)
+ *   | (Whiteboard | Properties-Panel)
+ *
+ * Hinweis: Die Pan/Leitung-Werkzeuge saßen früher in einer eigenen linken
+ * Toolbar (ToolbarLeft-Komponente). Sie sind jetzt Teil der oberen Toolbar,
+ * an der Stelle, an der zuvor die Bearbeiten-Buttons (Undo/Redo/Copy/Paste)
+ * standen — diese sind in die Menüleiste umgezogen. Der ToolMode-Typ wird
+ * weiterhin aus toolbar-left.ts importiert, die Komponente selbst wird aber
+ * nicht mehr gerendert (ihre Logik bleibt für spätere Wiederverwendung erhalten).
  */
 @Component({
   selector: 'app-root',
-  imports: [MenuBar, ToolbarTop, ToolbarLeft, Whiteboard, PropertiesPanel],
+  imports: [MenuBar, ToolbarTop, Whiteboard, PropertiesPanel],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
