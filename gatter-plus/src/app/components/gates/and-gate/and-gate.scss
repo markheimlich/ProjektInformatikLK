@@ -9,10 +9,15 @@
   user-select: none;
 }
 
-/* Toolbar-Modus: etwas kompakter */
+/* Toolbar-Modus: etwas kompakter.
+   Körper wird gold/gelb eingefärbt (--btn-bg, siehe styles.scss) — die
+   Bauteil-Vorschau in der Palette soll farbig sein, nicht der umgebende
+   Kasten (siehe toolbar-top.scss: .palette-item hat bewusst keine eigene
+   Hintergrundfarbe). Gilt NUR im Toolbar-Modus, Gatter auf dem Whiteboard
+   bleiben unverändert weiß/signalabhängig eingefärbt. */
 .gate.toolbar-mode {
   height: 44px;
-  .gate-body { width: 44px; }
+  .gate-body { width: 44px; background: var(--btn-bg, #f5b342); }
   .wire { width: 8px; }
   .symbol { font-size: 15px; }
 }

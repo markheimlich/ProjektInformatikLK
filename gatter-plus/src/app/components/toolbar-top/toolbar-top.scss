@@ -64,73 +64,56 @@
 }
 
 /*
- * Einzelnes Palette-Item: gelb-orange Kästchen mit dunklem Rahmen (Referenzdesign).
- * Größe (64x56) ist bewusst etwas größer als der reine Bauteil-Rahmen (60x44,
- * Draht+Körper+Draht) gewählt, damit die eigene gelbe Fläche/der Rahmen als
- * sichtbarer Rand um das Bauteil-Icon herum erscheint statt komplett vom
- * (undurchsichtig weißen) Gatter-Körper verdeckt zu werden.
+ * Einzelnes Palette-Item: der KASTEN selbst ist bewusst farblos/leer — kein
+ * eigener Hintergrund, kein eigener Rahmen. Dadurch scheint die Taskleisten-
+ * Farbe (--toolbar-bg) überall dort durch, wo kein Bauteil-Icon sitzt.
  *
- * Die eigentlichen Gatter-Vorschau-Komponenten (app-and-gate usw.) haben eine
- * fest codierte weiße .gate-body-Füllung. Statt jede einzelne Gatter-SCSS
- * anzufassen, wird hier ein ::after-Overlay mit mix-blend-mode:color über den
- * gesamten Button gelegt — das färbt den weißen Gatter-Körper exakt im Ton von
- * --btn-bg ein (deutlich präziser als ein sepia/saturate-Filter, der bei
- * reinem Weiß leicht ins Grünlich-Gelbe abdriftet statt sauberes Gold zu treffen).
+ * Die Gold/Gelb-Färbung DES BAUTEILS selbst (nicht des Kastens) passiert
+ * NICHT hier, sondern direkt in der jeweiligen Gatter-SCSS
+ * (z.B. and-gate.scss: `.gate.toolbar-mode .gate-body { background:
+ * var(--btn-bg) }`). Ein früherer Versuch mit einem ::after-Overlay +
+ * mix-blend-mode auf Toolbar-Ebene wurde verworfen: der Blend-Modus färbte
+ * einerseits die TRANSPARENTEN Zwischenräume ungewollt mit ein (der Kasten
+ * sollte aber leer bleiben) und färbte andererseits den weißen Gatter-Körper
+ * kaum sichtbar (hohe Luminanz von Weiß dominiert den Blend). Die direkte
+ * CSS-Variable in der Gatter-SCSS trifft exakt nur die gewünschte Fläche.
  */
 .palette-item {
-  position: relative; /* Anker für das Farb-Overlay */
-  overflow: hidden;    /* Overlay bleibt innerhalb der abgerundeten Ecken */
   display: flex;
   align-items: center;
   justify-content: center;
   width: 64px;
   height: 56px;
-  border: 1.5px solid var(--btn-border);
-  border-radius: 6px;
-  background: var(--btn-bg);
-  color: var(--btn-text);
   cursor: grab;
-  transition: background 0.15s, border-color 0.15s, filter 0.15s, opacity 0.15s;
+  transition: filter 0.15s, opacity 0.15s;
 
+  /* Dezentes Hover-Feedback auf dem sonst leeren Kasten (rein interaktiv,
+     keine dauerhafte Farbe) */
   &:hover {
-    background: var(--btn-hover-bg);
+    background: var(--menu-hover-bg);
+    border-radius: 6px;
   }
-  /* Beim Ziehen kräftigeres Orange (Feedback, dass der Drag begonnen hat) */
   &:active {
     cursor: grabbing;
-    background: var(--btn-active-bg);
-    border-color: var(--btn-active-border);
-    color: var(--btn-active-text);
   }
 }
-
-/* Gold/Gelb-Overlay: liegt über dem weißen Gatter-Körper und färbt ihn per
-   Blend-Mode exakt im --btn-bg-Ton ein, ohne die eigentliche Gatter-SCSS
-   anzufassen. pointer-events:none, damit Klicks/Drag weiterhin durchgehen. */
-.palette-item:not(.io-item)::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--btn-bg);
-  mix-blend-mode: color;
-  pointer-events: none;
-}
-
-/* Ein-/Ausgang-Bauteile (Schalter, LED, Takt, Label) behalten ihre eigene,
-   nicht-gelbe Optik bei (siehe Referenzbild) — kein Overlay im Normalzustand.
-   Der Deaktiviert-Zustand unten greift trotzdem einheitlich für alle Typen. */
 
 /*
  * Deaktivierter Zustand: nur während die Simulation läuft.
  * "Nur deaktivierte Elemente dürfen grau wirken" — hier via Graustufen-Filter
- * auf dem gesamten Button (überschreibt sowohl die Gold-Tönung als auch die
- * unveränderte io-item-Optik einheitlich). Zusätzlich pointer-events:none
- * und ein Guard in onGateMouseDown() verhindern das tatsächliche Platzieren.
+ * auf dem gesamten Palette-Item (färbt das jetzt tatsächlich goldene
+ * Bauteil-Icon grau, der Kasten selbst bleibt ohnehin farblos). Zusätzlich
+ * pointer-events:none und ein Guard in onGateMouseDown() verhindern das
+ * tatsächliche Platzieren.
  */
 .palette-item.disabled {
   filter: grayscale(1) opacity(0.55);
   cursor: not-allowed;
   pointer-events: none;
+
+  &:hover {
+    background: none; /* kein Hover-Feedback auf deaktivierten Items */
+  }
 }
 
 /*

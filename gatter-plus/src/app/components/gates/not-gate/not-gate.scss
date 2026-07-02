@@ -1,6 +1,13 @@
 /* NOT-Gatter (Inverter) – 1 Eingang, Invertierkreis am Ausgang */
 .gate { display: flex; flex-direction: row; align-items: center; height: 52px; user-select: none; }
-.gate.toolbar-mode { height: 44px; .gate-body { width: 44px; height: 34px; } .wire { width: 6px; } .invert-bubble { width: 7px; height: 7px; } }
+/* Toolbar-Modus: Körper + Invertierkreis werden gold/gelb eingefärbt
+   (--btn-bg) — nur die Palette-Vorschau, nicht das Gatter auf dem Whiteboard. */
+.gate.toolbar-mode {
+  height: 44px;
+  .gate-body { width: 44px; height: 34px; background: var(--btn-bg, #f5b342); }
+  .wire { width: 6px; }
+  .invert-bubble { width: 7px; height: 7px; background: var(--btn-bg, #f5b342); }
+}
 .gate.signal-high .gate-body { background: #bbf7d0; border-color: #16a34a; }
 .gate.signal-low .gate-body { background: #f1f5f9; border-color: #64748b; }
 
