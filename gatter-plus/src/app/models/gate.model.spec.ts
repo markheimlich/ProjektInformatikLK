@@ -90,4 +90,35 @@ describe('computeOrthogonalWaypoints', () => {
     expect(pts[0].x).toBeGreaterThan(200); // start.x + GAP
     expect(pts[3].x).toBeLessThan(50);     // end.x - GAP
   });
+
+  // ── Regression: Leitung um "erweiterte" (hohe) Gatter herumleiten ──────────
+
+  it('Rückwärts, erweitertes (hohes) Ziel-Gatter → obere Route räumt die echte Gatter-Oberkante frei, nicht nur die Pin-Höhe', () => {
+    // Szenario aus dem gemeldeten Bug: Das Ziel ist ein AND-Gatter mit vielen
+    // Eingängen (dadurch y-Bereich 50–350, "erweitert"). Der verbundene
+    // Eingangs-Pin liegt bei y=200 — weit unterhalb der echten Oberkante (50).
+    // Ohne toGateTopY würde aboveY = min(200,200)-24 = 176 betragen, was
+    // MITTEN IM Gatter liegt (zwischen 50 und 350) — die Leitung hätte
+    // sichtbar durch den Gatter-Körper geschnitten (der gemeldete Bug).
+    const pts = computeOrthogonalWaypoints(
+      300, 200,   // Start: Ausgangs-Pin eines normalen Gatters
+      50, 200,    // Ende: Eingangs-Pin des erweiterten Ziel-Gatters
+      220, 350,   // fromGateBottomY, toGateBottomY
+      180, 50     // fromGateTopY, toGateTopY
+    );
+    const routeY = pts[1].y;
+    // Route muss oberhalb der ECHTEN Ziel-Gatter-Oberkante (50) liegen,
+    // nicht nur oberhalb der reinen Pin-Höhe (200).
+    expect(routeY).toBeLessThan(50);
+  });
+
+  it('Ohne Top-Angabe (Fallback) orientiert sich die obere Route nur an der Pin-Höhe', () => {
+    // Dokumentiert das frühere (fehlerhafte) Verhalten als Kontrast zum Test
+    // oben: ohne die echten Gatter-Oberkanten wird nur ein fester Abstand
+    // (GAP) von der Pin-Höhe genommen — bei einem hohen Gatter reicht das
+    // nicht aus, um über dessen tatsächliche Oberkante zu gelangen.
+    const pts = computeOrthogonalWaypoints(300, 200, 50, 200, 220, 350);
+    const routeY = pts[1].y;
+    expect(routeY).toBe(176); // min(200,200) - 24, ignoriert die Gatter-Höhe
+  });
 });

@@ -665,7 +665,7 @@ export class Whiteboard implements OnDestroy {
           const end        = getPinWorldPos(to,   'input',  wire.toPinIndex);
           const fromBottom = from.y + getGateDimensions(from).h;
           const toBottom   = to.y   + getGateDimensions(to).h;
-          return { ...wire, points: computeOrthogonalWaypoints(start.x, start.y, end.x, end.y, fromBottom, toBottom) };
+          return { ...wire, points: computeOrthogonalWaypoints(start.x, start.y, end.x, end.y, fromBottom, toBottom, from.y, to.y) };
         });
         if (this.simulationMode) this.recomputeSimulation();
       }
@@ -794,7 +794,8 @@ export class Whiteboard implements OnDestroy {
             toGateId:     near.gate.id,
             toPinIndex:   near.pinIndex,
             points: computeOrthogonalWaypoints(
-              this.wireDrawing.x1, this.wireDrawing.y1, endPos.x, endPos.y, fromBottom, toBottom
+              this.wireDrawing.x1, this.wireDrawing.y1, endPos.x, endPos.y,
+              fromBottom, toBottom, fromGate?.y, near.gate.y
             ),
           };
           this.pushHistory(); // Zustand vor dem Hinzufügen der Leitung sichern
@@ -909,7 +910,7 @@ export class Whiteboard implements OnDestroy {
     const fromBottom = from.y + getGateDimensions(from).h;
     const toBottom   = to.y   + getGateDimensions(to).h;
     const waypoints  = computeOrthogonalWaypoints(
-      start.x, start.y, end.x, end.y, fromBottom, toBottom
+      start.x, start.y, end.x, end.y, fromBottom, toBottom, from.y, to.y
     );
     return [start, ...waypoints, end];
   }

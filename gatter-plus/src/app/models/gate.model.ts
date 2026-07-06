@@ -363,12 +363,22 @@ export function getOutputPinMaxConnections(_gateType: GateType): number {
  * Rückwärts (x2 < x1): U-Kurve, Routingrichtung (oben/unten) wird anhand
  *   der kürzeren Strecke gewählt, um unnötige Kreuzungen zu minimieren.
  *   Start → (x1+GAP, y1) → (x1+GAP, routeY) → (x2-GAP, routeY) → (x2-GAP, y2) → Ende
+ *
+ * fromGateTopY/toGateTopY bzw. fromGateBottomY/toGateBottomY geben die
+ * tatsächlichen Bauteil-Kanten an (nicht nur die Pin-Höhe). Das ist wichtig
+ * bei "erweiterten" Gattern (z.B. AND mit vielen Eingängen, dadurch höher):
+ * ein mittlerer/unterer Eingangs-Pin liegt dann weit unterhalb der echten
+ * Gatter-Oberkante. Ohne diese Info würde die "obere" Route nur knapp über
+ * dem Pin (statt über dem ganzen Gatter) verlaufen und mitten durch den
+ * Gatter-Körper geschnitten werden.
  */
 export function computeOrthogonalWaypoints(
   x1: number, y1: number,
   x2: number, y2: number,
   fromGateBottomY?: number,
-  toGateBottomY?:   number
+  toGateBottomY?:   number,
+  fromGateTopY?:    number,
+  toGateTopY?:      number
 ): { x: number; y: number }[] {
   const GAP = 24;
 
@@ -385,9 +395,10 @@ export function computeOrthogonalWaypoints(
   const xRight = x1 + GAP;
   const xLeft  = x2 - GAP;
 
-  // Obere Route: oberhalb beider beteiligter Pins
-  const aboveY = Math.min(y1, y2) - GAP;
-  // Untere Route: unterhalb beider beteiligter Pins (wenn Bauteil-Höhe bekannt)
+  // Obere Route: oberhalb der TATSÄCHLICHEN Bauteil-Oberkanten (falls bekannt),
+  // sonst Fallback auf die reine Pin-Höhe.
+  const aboveY = Math.min(fromGateTopY ?? y1, toGateTopY ?? y2) - GAP;
+  // Untere Route: unterhalb der tatsächlichen Bauteil-Unterkanten (wenn bekannt)
   const belowY = fromGateBottomY !== undefined && toGateBottomY !== undefined
     ? Math.max(fromGateBottomY, toGateBottomY) + GAP
     : Math.max(y1, y2) + GAP;
