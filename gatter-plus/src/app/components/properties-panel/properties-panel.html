@@ -1,3 +1,20 @@
+@if (selectedWireId && !selectedGate) {
+<!--
+  Leitung ausgewählt (kein Bauteil): eigener schlanker Block mit
+  Löschen-Button. Das Löschen entfernt NUR die Leitung, die angeschlossenen
+  Bauteile bleiben unangetastet (siehe deleteWire() im Whiteboard).
+-->
+<div class="panel">
+  <div class="panel-header">
+    <span class="gate-type">Leitung</span>
+    <button class="delete-btn" (click)="deleteWire()" title="Leitung löschen (Del)">🗑</button>
+  </div>
+  <div class="section">
+    <div class="section-title">Hinweis</div>
+    <p class="wire-hint">Verbindet zwei Bauteile. Löschen entfernt nur diese Leitung — die Bauteile bleiben erhalten.</p>
+  </div>
+</div>
+}
 @if (selectedGate) {
 <div class="panel">
   <div class="panel-header">

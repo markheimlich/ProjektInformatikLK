@@ -34,6 +34,11 @@
   border-color: #64748b;
 }
 
+/* Ausgangs-Pin (Verbindungs-Draht) ebenfalls grün einfärben, wenn Strom fließt */
+.gate.signal-high .pins-out .wire {
+  background: #16a34a;
+}
+
 /* Container für Eingangs-Drähte (links) */
 .pins-in {
   display: flex;
@@ -54,7 +59,7 @@
 .wire {
   width: 12px;
   height: 2px;
-  background: #1e293b;
+  background: var(--wire-stroke, #1e293b);
   flex-shrink: 0;
 }
 

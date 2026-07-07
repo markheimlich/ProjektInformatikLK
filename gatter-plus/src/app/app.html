@@ -33,11 +33,13 @@
     <!-- Whiteboard: Schaltkreis-Editor -->
     <app-whiteboard></app-whiteboard>
 
-    <!-- Properties Panel: erscheint wenn ein Bauteil angeklickt wurde -->
+    <!-- Properties Panel: erscheint wenn ein Bauteil ODER eine Leitung angeklickt wurde -->
     <app-properties-panel
       [selectedGate]="selectedGate"
+      [selectedWireId]="selectedWireId"
       (gateChange)="onGateChange($event)"
       (gateDelete)="onGateDelete($event)"
+      (wireDelete)="onWireDelete($event)"
     ></app-properties-panel>
 
   </div>

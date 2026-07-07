@@ -27,11 +27,28 @@ export class PropertiesPanel {
   /** Aktuell ausgewähltes Element (GateInstance vom Whiteboard) */
   @Input() selectedGate: any | null = null;
 
+  /**
+   * ID der aktuell ausgewählten Leitung (falls kein Bauteil, sondern eine
+   * Leitung ausgewählt ist). Zeigt einen eigenen kleinen Block mit
+   * Löschen-Button, damit Leitungen unabhängig von den angeschlossenen
+   * Bauteilen gelöscht werden können — bisher ging das nur per Del-Taste
+   * ohne sichtbaren Hinweis darauf.
+   */
+  @Input() selectedWireId: string | null = null;
+
   /** Wird ausgelöst, wenn eine Eigenschaft geändert wird */
   @Output() gateChange = new EventEmitter<GatePropertyChange>();
 
   /** Wird ausgelöst, wenn das Element gelöscht werden soll (gibt die ID zurück) */
   @Output() gateDelete = new EventEmitter<string>();
+
+  /** Wird ausgelöst, wenn die ausgewählte Leitung gelöscht werden soll */
+  @Output() wireDelete = new EventEmitter<string>();
+
+  deleteWire(): void {
+    if (!this.selectedWireId) return;
+    this.wireDelete.emit(this.selectedWireId);
+  }
 
   get hasVariableInputs(): boolean {
     return ['and', 'or', 'xor'].includes(this.selectedGate?.type);

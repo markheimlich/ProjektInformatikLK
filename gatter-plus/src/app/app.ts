@@ -59,6 +59,11 @@ export class App implements OnInit {
     return this.whiteboardRef?.selectedGate ?? null;
   }
 
+  /** Ausgewählte Leitung (für Properties Panel — zeigt einen Löschen-Button) */
+  get selectedWireId(): string | null {
+    return this.whiteboardRef?.selectedWireId ?? null;
+  }
+
   /** Eigenschafts-Änderungen vom Properties Panel ans Whiteboard weiterleiten */
   onGateChange(changes: GatePropertyChange): void {
     // color kommt als string aus dem Panel, cast zum engeren Typ ist hier sicher
@@ -68,6 +73,11 @@ export class App implements OnInit {
   /** Lösch-Anfragen vom Properties Panel ans Whiteboard weiterleiten */
   onGateDelete(gateId: string): void {
     this.whiteboardRef.deleteGate(gateId);
+  }
+
+  /** Lösch-Anfrage für eine Leitung ans Whiteboard weiterleiten */
+  onWireDelete(wireId: string): void {
+    this.whiteboardRef.deleteWire(wireId);
   }
 
   onUndo():  void { this.whiteboardRef.undo(); }

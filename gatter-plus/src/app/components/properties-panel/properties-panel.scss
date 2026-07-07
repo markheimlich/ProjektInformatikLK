@@ -58,6 +58,14 @@
   margin-bottom: 6px;
 }
 
+/* Kurzer Hinweistext im Leitungs-Block (siehe properties-panel.html) */
+.wire-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
 .rotation-btns {
   display: flex;
   gap: 4px;

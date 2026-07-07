@@ -1,8 +1,19 @@
 import {
   getOutputPinMaxConnections,
   computeOrthogonalWaypoints,
+  getPinDirection,
   GateType,
+  GateInstance,
 } from './gate.model';
+
+// ─── Test-Fixture ───────────────────────────────────────────────────────────
+
+function makeGate(rotation: 0 | 90 | 180 | 270): GateInstance {
+  return {
+    id: 'g1', type: 'and', x: 0, y: 0, rotation, color: 'default',
+    inputCount: 2, inputValue: false, ffState: false, clockPeriodMs: 1000,
+  };
+}
 
 // ─── Tests: getOutputPinMaxConnections ────────────────────────────────────────
 
@@ -120,5 +131,117 @@ describe('computeOrthogonalWaypoints', () => {
     const pts = computeOrthogonalWaypoints(300, 200, 50, 200, 220, 350);
     const routeY = pts[1].y;
     expect(routeY).toBe(176); // min(200,200) - 24, ignoriert die Gatter-Höhe
+  });
+
+  // ── Regression: Leitungsführung bei rotierten Bauteilen ────────────────────
+
+  it('Vorwärts mit Standard-Richtungen verhält sich identisch zum alten Verhalten (Rückwärtskompatibilität)', () => {
+    const withDefaults = computeOrthogonalWaypoints(0, 0, 100, 60);
+    const withExplicit = computeOrthogonalWaypoints(
+      0, 0, 100, 60, undefined, undefined, undefined, undefined,
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 }
+    );
+    expect(withExplicit).toEqual(withDefaults);
+  });
+
+  it('Beide Pins vertikal (z.B. zwei 90°-gedrehte Bauteile untereinander) → horizontaler Mittelknick statt vertikalem', () => {
+    // Start-Pin zeigt nach unten (Ausgang eines 90°-gedrehten Gatters),
+    // Ziel-Pin zeigt nach oben (Eingang eines 270°-gedrehten Gatters) —
+    // die Leitung muss senkrecht aus-/eintreten, nicht waagerecht.
+    const pts = computeOrthogonalWaypoints(
+      100, 0, 150, 100,
+      undefined, undefined, undefined, undefined,
+      { dx: 0, dy: 1 },  // Start zeigt nach unten
+      { dx: 0, dy: -1 }, // Ziel zeigt nach oben
+    );
+    expect(pts).toHaveLength(2);
+    // Beide Zwischenpunkte liegen auf derselben Y (horizontaler Knick)
+    expect(pts[0].y).toBe(pts[1].y);
+    // Der erste Punkt behält die Start-X, der zweite die Ziel-X bei
+    // (Bewegung: erst senkrecht, dann waagerecht, dann wieder senkrecht)
+    expect(pts[0].x).toBe(100);
+    expect(pts[1].x).toBe(150);
+  });
+
+  it('Senkrecht zueinander (Start horizontal, Ziel vertikal) → Leitung tritt in beiden Pins in der korrekten Richtung ein/aus', () => {
+    // Start: Ausgang zeigt nach rechts (unrotiertes Gatter)
+    // Ziel: Eingang zeigt nach oben (270°-gedrehtes Gatter, Eingang "unten")
+    const x1 = 100, y1 = 50, x2 = 250, y2 = 150;
+    const pts = computeOrthogonalWaypoints(
+      x1, y1, x2, y2,
+      undefined, undefined, undefined, undefined,
+      { dx: 1, dy: 0 },   // Start: nach rechts
+      { dx: 0, dy: 1 },   // Ziel zeigt nach unten → Leitung muss von UNTEN kommend nach oben eintreten
+    );
+    const full = [{ x: x1, y: y1 }, ...pts, { x: x2, y: y2 }];
+    // Erstes Segment muss horizontal nach rechts verlaufen (Start-Richtung)
+    expect(full[1].y).toBe(y1);
+    expect(full[1].x).toBeGreaterThan(x1);
+    // Letztes Segment muss von unten (größeres Y) kommend senkrecht in
+    // den Ziel-Pin eintreten (Ziel zeigt nach unten → Eintritt von unten)
+    const secondLast = full[full.length - 2];
+    expect(secondLast.x).toBe(x2);
+    expect(secondLast.y).toBeGreaterThan(y2);
+  });
+
+  it('Senkrecht zueinander (Start vertikal, Ziel horizontal) → Leitung tritt in beiden Pins in der korrekten Richtung ein/aus', () => {
+    const x1 = 100, y1 = 50, x2 = 250, y2 = 150;
+    const pts = computeOrthogonalWaypoints(
+      x1, y1, x2, y2,
+      undefined, undefined, undefined, undefined,
+      { dx: 0, dy: -1 },  // Start zeigt nach oben
+      { dx: -1, dy: 0 },  // Ziel: normaler Eingang, zeigt nach links
+    );
+    const full = [{ x: x1, y: y1 }, ...pts, { x: x2, y: y2 }];
+    // Erstes Segment muss senkrecht nach oben verlaufen (Start-Richtung)
+    expect(full[1].x).toBe(x1);
+    expect(full[1].y).toBeLessThan(y1);
+    // Letztes Segment muss von links kommend waagerecht in den Ziel-Pin
+    // eintreten (Ziel zeigt nach links → Leitung bewegt sich beim Eintritt
+    // nach rechts, kommt also von einem kleineren X)
+    const secondLast = full[full.length - 2];
+    expect(secondLast.y).toBe(y2);
+    expect(secondLast.x).toBeLessThan(x2);
+  });
+});
+
+// ─── Tests: getPinDirection ─────────────────────────────────────────────────
+
+describe('getPinDirection', () => {
+  it('unrotiert (0°): Ausgang zeigt nach rechts, Eingang nach links', () => {
+    const gate = makeGate(0);
+    expect(getPinDirection(gate, 'output')).toEqual({ dx: 1, dy: 0 });
+    expect(getPinDirection(gate, 'input')).toEqual({ dx: -1, dy: 0 });
+  });
+
+  it('90° im Uhrzeigersinn: Ausgang zeigt nach unten, Eingang nach oben', () => {
+    // Muss mit der tatsächlichen visuellen CSS-Rotation (transform: rotate())
+    // übereinstimmen — empirisch im Browser verifiziert (siehe Commit).
+    const gate = makeGate(90);
+    expect(getPinDirection(gate, 'output')).toEqual({ dx: 0, dy: 1 });
+    expect(getPinDirection(gate, 'input')).toEqual({ dx: 0, dy: -1 });
+  });
+
+  it('180°: Ausgang zeigt nach links, Eingang nach rechts (umgekehrt zu 0°)', () => {
+    const gate = makeGate(180);
+    expect(getPinDirection(gate, 'output')).toEqual({ dx: -1, dy: 0 });
+    expect(getPinDirection(gate, 'input')).toEqual({ dx: 1, dy: 0 });
+  });
+
+  it('270°: Ausgang zeigt nach oben, Eingang nach unten (umgekehrt zu 90°)', () => {
+    const gate = makeGate(270);
+    expect(getPinDirection(gate, 'output')).toEqual({ dx: 0, dy: -1 });
+    expect(getPinDirection(gate, 'input')).toEqual({ dx: 0, dy: 1 });
+  });
+
+  it('liefert immer exakte Einheitsvektoren ohne Fließkomma-Reste', () => {
+    for (const rotation of [0, 90, 180, 270] as const) {
+      const gate = makeGate(rotation);
+      for (const type of ['input', 'output'] as const) {
+        const dir = getPinDirection(gate, type);
+        expect(Number.isInteger(dir.dx)).toBe(true);
+        expect(Number.isInteger(dir.dy)).toBe(true);
+      }
+    }
   });
 });

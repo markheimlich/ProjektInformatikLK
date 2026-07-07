@@ -61,6 +61,12 @@
   --canvas-bg:           #ffffff;
   --grid-dot:            #c0c8d4;
 
+  /* Leitungen + Anschluss-Pins (Bauteil-Drähte, Verbindungslinien, T-Punkte).
+     Eine gemeinsame Variable, damit Pin-Drähte am Bauteil und die eigentliche
+     Verbindungslinie farblich zusammenpassen — und im Dark Mode hell genug
+     bleiben, um sich von der dunklen Zeichenfläche abzuheben. */
+  --wire-stroke:         #334155;
+
   /* Eingabefelder */
   --input-bg:            #ffffff;
   --input-border:        #cbd5e1;
@@ -129,6 +135,11 @@
 
   --canvas-bg:           #171a24;
   --grid-dot:            #2f3650;
+
+  /* Hell genug, um sich klar von der dunklen Zeichenfläche abzuheben
+     (das bisherige dunkle Navy #1e293b der Pin-Drähte wäre hier fast
+     unsichtbar gewesen). */
+  --wire-stroke:         #94a3b8;
 
   --input-bg:            #242836;
   --input-border:        #3a4055;

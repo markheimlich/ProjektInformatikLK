@@ -93,6 +93,24 @@ export interface WireConnection {
    *   Start → (midX, startY) → (midX, endY) → Ende
    */
   points: { x: number; y: number }[];
+  /**
+   * Falls diese Leitung als Abzweigung von einer BESTEHENDEN Leitung
+   * gezogen wurde (Klick auf eine beliebige Stelle der Original-Leitung,
+   * nicht auf den Ausgangs-Pin selbst): der exakte Punkt auf der
+   * Original-Leitung, an dem die Abzweigung visuell beginnt.
+   *
+   * Rein für die Darstellung (Rendering + T-Punkt-Anzeige) — elektrisch
+   * bleibt weiterhin fromGateId/fromPinIndex die tatsächliche Signalquelle
+   * (derselbe Ausgangs-Pin wie die Original-Leitung).
+   */
+  branchPoint?: { x: number; y: number };
+  /**
+   * Austrittsrichtung am branchPoint (nur relevant, wenn branchPoint gesetzt
+   * ist). Ein freier Punkt im Raum hat keine Rotation, die sich live ändern
+   * könnte — anders als bei einem echten Pin wird diese Richtung deshalb
+   * einmalig beim Erstellen gespeichert statt bei jedem Rendern neu berechnet.
+   */
+  fromDir?: PinDirection;
 }
 
 /**
@@ -271,16 +289,49 @@ export function getPinWorldPos(
   const dx = pin.x - dim.w / 2;
   const dy = pin.y - dim.h / 2;
 
-  // Rotation im Uhrzeigersinn: cos(θ) für x-Komponente, sin(θ) für y-Komponente
-  const angle = (gate.rotation * Math.PI) / 180;
+  // Rotation im Uhrzeigersinn (Bildschirm-Koordinaten, Y wächst nach unten).
+  // WICHTIG: Das CSS-Transform `rotate(Ndeg)` (siehe getGateTransform in
+  // whiteboard.ts) dreht den Gatter-Körper im Uhrzeigersinn. Damit Pins exakt
+  // auf den sichtbaren Drähten landen, muss die Formel dieselbe Drehrichtung
+  // abbilden — das erfordert hier ein NEGATIVES Vorzeichen im Winkel
+  // (empirisch verifiziert: bei 90°/270° lagen Ein-/Ausgangs-Pin sonst genau
+  // vertauscht auf der falschen Seite). isPointInGate() muss als Umkehrung
+  // dieser Abbildung konsequent das jeweils andere Vorzeichen verwenden.
+  const angle = -(gate.rotation * Math.PI) / 180;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
 
-  // Rotierter Versatz (Uhrzeigersinn: x' = x·cos + y·sin, y' = -x·sin + y·cos)
   const rx = dx * cos + dy * sin;
   const ry = -dx * sin + dy * cos;
 
   return { x: Math.round(cx + rx), y: Math.round(cy + ry) };
+}
+
+/** Achsenparalleler Einheits-Richtungsvektor (immer dx/dy ∈ {-1,0,1}). */
+export interface PinDirection {
+  dx: number;
+  dy: number;
+}
+
+/**
+ * Richtung, in die ein Pin aus dem Bauteil-Körper heraus zeigt (Einheitsvektor).
+ *
+ * Unrotiert zeigen Eingänge nach links (-1,0) und Ausgänge nach rechts (1,0).
+ * Die Rotation des Bauteils dreht diese Richtung exakt mit derselben Formel
+ * wie getPinWorldPos() — nur so bleiben Position und Austrittsrichtung eines
+ * Pins konsistent zueinander (wichtig für die Leitungsführung bei rotierten
+ * Bauteilen, siehe computeOrthogonalWaypoints()).
+ */
+export function getPinDirection(gate: GateInstance, pinType: 'input' | 'output'): PinDirection {
+  const baseDx = pinType === 'output' ? 1 : -1;
+  const angle  = -(gate.rotation * Math.PI) / 180;
+  // Runden, da bei Vielfachen von 90° minimale Fließkomma-Reste (~1e-16)
+  // entstehen können, die dx/dy sonst nicht exakt auf -1/0/1 fallen ließen.
+  const cos = Math.round(Math.cos(angle));
+  const sin = Math.round(Math.sin(angle));
+  // "|| 0" normalisiert -0 zu 0 (z.B. bei 180°), damit Vergleiche wie
+  // dx === 0 und toEqual({dx:0,...}) verlässlich funktionieren.
+  return { dx: (baseDx * cos) || 0, dy: (-baseDx * sin) || 0 };
 }
 
 /**
@@ -300,8 +351,9 @@ export function isPointInGate(
   const dx = px - cx;
   const dy = py - cy;
 
-  // Inverse Rotation (gegen Uhrzeigersinn = negativer Winkel)
-  const angle = -(gate.rotation * Math.PI) / 180;
+  // Inverse Rotation zu getPinWorldPos() — dort wird mit -rotation gearbeitet,
+  // hier entsprechend mit +rotation (siehe Kommentar in getPinWorldPos()).
+  const angle = (gate.rotation * Math.PI) / 180;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
 
@@ -353,21 +405,93 @@ export function getOutputPinMaxConnections(_gateType: GateType): number {
 }
 
 /**
+ * Berechnet Wegpunkte entlang EINER Hauptachse (a) mit einer Nebenachse (b).
+ * Wird für horizontale Leitungen mit (a=x, b=y) aufgerufen, und für vertikale
+ * Leitungen (zwei Pins, die beide nach oben/unten zeigen — z.B. zwei um 90°
+ * gedrehte Bauteile) mit vertauschten Achsen (a=y, b=x), siehe
+ * computeOrthogonalWaypoints(). Dadurch wird dieselbe Z-Form/U-Kurven-Logik
+ * für beide Achsen wiederverwendet, statt sie zu duplizieren.
+ *
+ * fromSign/targetSign: +1 = Pin verlässt das Bauteil in Richtung wachsender
+ * a-Koordinate, -1 = in Richtung fallender a-Koordinate. targetSign ist die
+ * Richtung, in die sich die Leitung bewegen muss, wenn sie den Ziel-Pin
+ * erreicht (das Gegenteil der Richtung, in die der Ziel-Pin selbst zeigt).
+ */
+function computeAxisAlignedWaypoints(
+  a1: number, b1: number,
+  a2: number, b2: number,
+  fromSign: number, targetSign: number,
+  fromBottomB?: number, toBottomB?: number,
+  fromTopB?:    number, toTopB?:    number,
+): { x: number; y: number }[] {
+  const GAP = 24;
+
+  // "Vorwärts" nur möglich, wenn beide Pins auf dieselbe Gesamtrichtung
+  // hinauslaufen (Standardfall: Ausgang zeigt z.B. nach rechts, Eingang
+  // wird von rechts erreicht — targetSign===fromSign) UND das Ziel
+  // tatsächlich in dieser Richtung liegt.
+  const forward = fromSign === targetSign
+    && (fromSign > 0 ? a2 >= a1 : a2 <= a1);
+
+  if (forward) {
+    if (Math.abs(b2 - b1) < 1) {
+      return []; // Gerade Linie — keine Zwischenpunkte nötig
+    }
+    const midA = Math.round((a1 + a2) / 2);
+    return [{ x: midA, y: b1 }, { x: midA, y: b2 }];
+  }
+
+  // U-Kurve: Start verlässt das Bauteil um GAP in fromSign-Richtung,
+  // Ziel wird um GAP entgegen seiner eigenen Austrittsrichtung erreicht.
+  const aOutFrom = a1 + fromSign   * GAP;
+  const aOutTo   = a2 - targetSign * GAP;
+
+  // Route entlang der Nebenachse: "oberhalb" (kleineres b) oder "unterhalb"
+  // (größeres b) der tatsächlichen Bauteil-Kanten (falls bekannt), sonst
+  // Fallback auf die reinen Pin-Koordinaten.
+  const bAbove = Math.min(fromTopB ?? b1, toTopB ?? b2) - GAP;
+  const bBelow = fromBottomB !== undefined && toBottomB !== undefined
+    ? Math.max(fromBottomB, toBottomB) + GAP
+    : Math.max(b1, b2) + GAP;
+
+  const costAbove = Math.abs(b1 - bAbove) + Math.abs(b2 - bAbove);
+  const costBelow = Math.abs(b1 - bBelow) + Math.abs(b2 - bBelow);
+  const routeB = costAbove <= costBelow ? bAbove : bBelow;
+
+  return [
+    { x: aOutFrom, y: b1 },
+    { x: aOutFrom, y: routeB },
+    { x: aOutTo,   y: routeB },
+    { x: aOutTo,   y: b2 },
+  ];
+}
+
+/**
  * Berechnet die Wegpunkte für eine orthogonale (rechtwinklige) Leitung.
  *
- * Vorwärts (x2 >= x1):
- *   - Gleiche Y-Koordinate: gerade Linie ohne Waypoints.
- *   - Unterschiedliche Y: Z-Form mit Mittelknick.
- *       Start → (midX, y1) → (midX, y2) → Ende
+ * Berücksichtigt die tatsächliche Austrittsrichtung beider Pins (fromDir/
+ * toDir, siehe getPinDirection()) — wichtig bei rotierten Bauteilen: ein um
+ * 90°/270° gedrehtes Gatter hat seine Ein-/Ausgänge oben/unten statt links/
+ * rechts, die Leitung muss dort also senkrecht statt waagerecht ansetzen,
+ * sonst entstehen Lücken oder unsinnige Verläufe (siehe gemeldeter Bug).
+ * Ohne Angabe verhalten sich fromDir/toDir wie bisher (Ausgang rechts,
+ * Eingang links) — bestehende Aufrufe bleiben dadurch unverändert korrekt.
  *
- * Rückwärts (x2 < x1): U-Kurve, Routingrichtung (oben/unten) wird anhand
- *   der kürzeren Strecke gewählt, um unnötige Kreuzungen zu minimieren.
- *   Start → (x1+GAP, y1) → (x1+GAP, routeY) → (x2-GAP, routeY) → (x2-GAP, y2) → Ende
+ * Fallunterscheidung:
+ * - Beide Pins horizontal (0°/180°-Bauteile): Z-Form mit Mittelknick, wenn
+ *   das Ziel in Austrittsrichtung liegt; sonst U-Kurve um die Bauteile herum
+ *   (Route oben/unten wird anhand der kürzeren Strecke gewählt).
+ * - Beide Pins vertikal (90°/270°-Bauteile): dieselbe Logik, um 90° gedreht
+ *   (Z-Form mit horizontalem Mittelknick, bzw. U-Kurve links/rechts herum).
+ * - Ein Pin horizontal, der andere vertikal (gemischte Rotation): Leitung
+ *   verlässt den Start-Pin gerade in dessen Richtung, macht einen Bogen und
+ *   erreicht den Ziel-Pin exakt entgegen dessen Austrittsrichtung — dadurch
+ *   entsteht nie eine Lücke, unabhängig von der relativen Lage der Bauteile.
  *
  * fromGateTopY/toGateTopY bzw. fromGateBottomY/toGateBottomY geben die
- * tatsächlichen Bauteil-Kanten an (nicht nur die Pin-Höhe). Das ist wichtig
- * bei "erweiterten" Gattern (z.B. AND mit vielen Eingängen, dadurch höher):
- * ein mittlerer/unterer Eingangs-Pin liegt dann weit unterhalb der echten
+ * tatsächlichen Bauteil-Kanten an (nicht nur die Pin-Höhe) — wichtig bei
+ * "erweiterten" Gattern (z.B. AND mit vielen Eingängen, dadurch höher): ein
+ * mittlerer/unterer Eingangs-Pin liegt dann weit unterhalb der echten
  * Gatter-Oberkante. Ohne diese Info würde die "obere" Route nur knapp über
  * dem Pin (statt über dem ganzen Gatter) verlaufen und mitten durch den
  * Gatter-Körper geschnitten werden.
@@ -378,41 +502,56 @@ export function computeOrthogonalWaypoints(
   fromGateBottomY?: number,
   toGateBottomY?:   number,
   fromGateTopY?:    number,
-  toGateTopY?:      number
+  toGateTopY?:      number,
+  fromDir: PinDirection = { dx: 1, dy: 0 },
+  toDir:   PinDirection = { dx: -1, dy: 0 },
 ): { x: number; y: number }[] {
   const GAP = 24;
 
-  if (x2 >= x1) {
-    // Normalfall: Ziel liegt rechts
-    if (Math.abs(y2 - y1) < 1) {
-      return []; // Gerade horizontale Linie — keine Zwischenpunkte nötig
-    }
-    const midX = Math.round((x1 + x2) / 2);
-    return [{ x: midX, y: y1 }, { x: midX, y: y2 }];
+  // Richtung, in die sich die Leitung bewegen muss, um in den Ziel-Pin
+  // hineinzulaufen (das Gegenteil der Richtung, in die der Pin herausragt).
+  const targetDx = -toDir.dx;
+  const targetDy = -toDir.dy;
+
+  const fromHorizontal   = fromDir.dy === 0;
+  const targetHorizontal = targetDy === 0;
+
+  // ── Beide Pins horizontal (Standardfall bei 0°/180°-Bauteilen) ──────────
+  if (fromHorizontal && targetHorizontal) {
+    return computeAxisAlignedWaypoints(
+      x1, y1, x2, y2, fromDir.dx, targetDx,
+      fromGateBottomY, toGateBottomY, fromGateTopY, toGateTopY,
+    );
   }
 
-  // Rückwärts-Fall: Ziel liegt links → U-Kurve
-  const xRight = x1 + GAP;
-  const xLeft  = x2 - GAP;
+  // ── Beide Pins vertikal (z.B. zwei 90°/270°-gedrehte Bauteile) ──────────
+  // Achsen vertauschen (a=y, b=x), dieselbe Logik wiederverwenden, Ergebnis
+  // zurücktauschen. Ober-/Unterkanten-Bounds sind hier nicht bekannt (nur
+  // Y-Kanten liegen vor) — Fallback auf reine Pin-Koordinaten genügt für
+  // diesen selteneren Fall.
+  if (!fromHorizontal && !targetHorizontal) {
+    const swapped = computeAxisAlignedWaypoints(y1, x1, y2, x2, fromDir.dy, targetDy);
+    return swapped.map(p => ({ x: p.y, y: p.x }));
+  }
 
-  // Obere Route: oberhalb der TATSÄCHLICHEN Bauteil-Oberkanten (falls bekannt),
-  // sonst Fallback auf die reine Pin-Höhe.
-  const aboveY = Math.min(fromGateTopY ?? y1, toGateTopY ?? y2) - GAP;
-  // Untere Route: unterhalb der tatsächlichen Bauteil-Unterkanten (wenn bekannt)
-  const belowY = fromGateBottomY !== undefined && toGateBottomY !== undefined
-    ? Math.max(fromGateBottomY, toGateBottomY) + GAP
-    : Math.max(y1, y2) + GAP;
-
-  // Kürzere vertikale Strecke wählen
-  const costAbove = Math.abs(y1 - aboveY) + Math.abs(y2 - aboveY);
-  const costBelow = Math.abs(y1 - belowY) + Math.abs(y2 - belowY);
-  const routeY = costAbove <= costBelow ? aboveY : belowY;
-
+  // ── Gemischt: ein Pin horizontal, der andere vertikal ───────────────────
+  // Robuster Zickzack-Pfad, der IMMER in der richtigen Richtung aus- bzw.
+  // eintritt, unabhängig von der relativen Lage der beiden Bauteile.
+  if (fromHorizontal) {
+    const stubX = x1 + fromDir.dx * GAP;
+    const stubY = y2 + toDir.dy   * GAP;
+    return [
+      { x: stubX, y: y1 },
+      { x: stubX, y: stubY },
+      { x: x2,    y: stubY },
+    ];
+  }
+  const stubY = y1 + fromDir.dy * GAP;
+  const stubX = x2 + toDir.dx   * GAP;
   return [
-    { x: xRight, y: y1 },
-    { x: xRight, y: routeY },
-    { x: xLeft,  y: routeY },
-    { x: xLeft,  y: y2 },
+    { x: x1,    y: stubY },
+    { x: stubX, y: stubY },
+    { x: stubX, y: y2 },
   ];
 }
 

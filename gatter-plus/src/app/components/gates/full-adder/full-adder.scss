@@ -53,8 +53,13 @@
 .wire {
   width: 12px;
   height: 2px;
-  background: #1e293b;
+  background: var(--wire-stroke, #1e293b);
   flex-shrink: 0;
+}
+
+/* Ausgangs-Pin (S oder Cout) grün, wenn sein eigenes Signal HIGH ist */
+.wire.signal-high {
+  background: #16a34a;
 }
 
 /* Gatter-Körper: DIN-Rechteck */

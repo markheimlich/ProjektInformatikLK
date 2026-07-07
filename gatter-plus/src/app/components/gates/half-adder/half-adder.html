@@ -22,15 +22,16 @@
     <span class="symbol">HA</span>
   </div>
 
-  <!-- Ausgangs-Pins (rechts): S – Summe (oben), C – Carry (unten) -->
+  <!-- Ausgangs-Pins (rechts): S – Summe (oben), C – Carry (unten).
+       Jeder Pin färbt sich unabhängig grün, wenn sein eigenes Signal HIGH ist. -->
   <div class="pins-out">
     <div class="pin-row-out">
       <span class="pin-label-out">S</span>
-      <div class="wire"></div>
+      <div class="wire" [class.signal-high]="signalOutputS === true"></div>
     </div>
     <div class="pin-row-out">
       <span class="pin-label-out">C</span>
-      <div class="wire"></div>
+      <div class="wire" [class.signal-high]="signalOutputC === true"></div>
     </div>
   </div>
 </div>

@@ -88,9 +88,10 @@
   z-index: 1;  /* unter den Gatter-Körpern → Leitungsenden verschwinden sauber im Gate */
 }
 
-/* Normale Leitung */
+/* Normale Leitung — Farbe passt sich dem Theme an (--wire-stroke), damit sie
+   im Dark Mode nicht in der dunklen Zeichenfläche verschwindet. */
 .wire-line {
-  stroke: #334155;
+  stroke: var(--wire-stroke, #334155);
   stroke-width: 2;
   fill: none;
   pointer-events: stroke;  /* Klick nur auf dem Strich (nicht im leeren Bereich) */
@@ -126,7 +127,7 @@
 
 /* Verbindungs-Punkt (T-Junction): ein Ausgang → mehrere Eingänge */
 .wire-junction {
-  fill: #1e293b;
+  fill: var(--wire-stroke, #1e293b);
   pointer-events: none;
 }
 .wire-junction.junction-high { fill: #16a34a; }

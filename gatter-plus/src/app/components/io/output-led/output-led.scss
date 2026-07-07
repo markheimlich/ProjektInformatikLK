@@ -17,7 +17,7 @@
 
 /* Eingangs-Draht (links) */
 .pin-in { display: flex; align-items: center; align-self: stretch; }
-.wire { width: 12px; height: 2px; background: #1e293b; flex-shrink: 0; }
+.wire { width: 12px; height: 2px; background: var(--wire-stroke, #1e293b); flex-shrink: 0; }
 
 /* LED-Körper */
 .led-body {

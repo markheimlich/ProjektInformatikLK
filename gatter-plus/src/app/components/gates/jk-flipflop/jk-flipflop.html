@@ -34,15 +34,16 @@
     <span class="symbol">JK-FF</span>
   </div>
 
-  <!-- Ausgangs-Pins (rechts, oben→unten): Q, Q̄ -->
+  <!-- Ausgangs-Pins (rechts, oben→unten): Q, Q̄.
+       Jeder Pin färbt sich unabhängig grün, wenn sein eigenes Signal HIGH ist. -->
   <div class="pins-out">
     <div class="pin-row-out">
       <span class="pin-label-out">Q</span>
-      <div class="wire"></div>
+      <div class="wire" [class.signal-high]="signalOutputQ === true"></div>
     </div>
     <div class="pin-row-out">
       <span class="pin-label-out">Q&#x0305;</span>
-      <div class="wire"></div>
+      <div class="wire" [class.signal-high]="signalOutputQBar === true"></div>
     </div>
   </div>
 </div>
