@@ -114,6 +114,10 @@ export class Whiteboard implements OnDestroy {
   private panStartOffsetX = 0;
   private panStartOffsetY = 0;
 
+  // ─── Zoom-Zustand ──────────────────────────────────────────────────────────
+  zoom = 1.0;
+  minimapVisible = true;
+
   // ─── Werkzeug-Modus ────────────────────────────────────────────────────────
   toolMode: ToolMode = 'pan';
 
@@ -594,6 +598,15 @@ export class Whiteboard implements OnDestroy {
     if (this.editingLabelGateId) this.commitLabel();
     this.selectedWireId = null;
 
+    // Ausgangs-Stub-Klick: Verneinung ein-/ausschalten (nur im Pan-Modus, nicht in Simulation)
+    if (!this.simulationMode && !event.ctrlKey && !event.shiftKey) {
+      const stubHit = this.findOutputStubAt(lx, ly);
+      if (stubHit) {
+        this.toggleNegation(stubHit.gate.id, stubHit.pinIndex);
+        return;
+      }
+    }
+
     if (event.ctrlKey || event.shiftKey) {
       // Ctrl+Drag: Auswahlrahmen aufziehen (additiv zur bestehenden Auswahl)
       this.selectionRectState   = { startLx: lx, startLy: ly };
@@ -664,8 +677,10 @@ export class Whiteboard implements OnDestroy {
 
         // Waypoints aller angeschlossenen Leitungen neu berechnen
         const movedIds = new Set([movedId, ...this.gateDragState.otherOrigins.keys()]);
-        this.wires = this.wires.map(wire => {
-          if (!movedIds.has(wire.fromGateId) && !movedIds.has(wire.toGateId)) return wire;
+        const updatedWires = this.wires.map(wire => {
+          const fromMoved = movedIds.has(wire.fromGateId);
+          const toMoved   = movedIds.has(wire.toGateId);
+          if (!fromMoved && !toMoved) return wire;
           const from = updatedGates.find(g => g.id === wire.fromGateId);
           const to   = updatedGates.find(g => g.id === wire.toGateId);
           if (!from || !to) return wire;
@@ -675,12 +690,53 @@ export class Whiteboard implements OnDestroy {
           const toBottom   = to.y   + getGateDimensions(to).h;
           const fromDir    = getPinDirection(from, 'output');
           const toDir      = getPinDirection(to,   'input');
+          // Abzweigpunkt mitverschieben, wenn die Quell-Gatter bewegt wurde
+          let newBranchPoint = wire.branchPoint;
+          if (wire.branchPoint && fromMoved) {
+            newBranchPoint = { x: wire.branchPoint.x + dx, y: wire.branchPoint.y + dy };
+          }
           return {
             ...wire,
+            branchPoint: newBranchPoint,
             points: computeOrthogonalWaypoints(
               start.x, start.y, end.x, end.y, fromBottom, toBottom, from.y, to.y, fromDir, toDir
             ),
           };
+        });
+
+        // Zweiter Durchlauf: Abzweigpunkte, deren Haupt-Leitung sich geändert hat
+        // (Ziel-Gatter der Haupt-Leitung verschoben, Quell-Gatter nicht)
+        this.wires = updatedWires.map(wire => {
+          if (!wire.branchPoint || movedIds.has(wire.fromGateId)) return wire;
+          const mainWire = updatedWires.find(
+            w => !w.branchPoint
+              && w.fromGateId   === wire.fromGateId
+              && w.fromPinIndex === wire.fromPinIndex
+              && movedIds.has(w.toGateId)
+          );
+          if (!mainWire) return wire;
+          const from = updatedGates.find(g => g.id === mainWire.fromGateId);
+          const to   = updatedGates.find(g => g.id === mainWire.toGateId);
+          if (!from || !to) return wire;
+          const start = getPinWorldPos(from, 'output', mainWire.fromPinIndex);
+          const end   = getPinWorldPos(to,   'input',  mainWire.toPinIndex);
+          const wps   = computeOrthogonalWaypoints(
+            start.x, start.y, end.x, end.y,
+            from.y + getGateDimensions(from).h, to.y + getGateDimensions(to).h,
+            from.y, to.y,
+            getPinDirection(from, 'output'), getPinDirection(to, 'input')
+          );
+          const path = [start, ...wps, end];
+          let bestDist = Infinity;
+          let bestPt   = wire.branchPoint!;
+          for (let i = 0; i < path.length - 1; i++) {
+            const { dist, point } = this.closestPointOnSegment(
+              wire.branchPoint!.x, wire.branchPoint!.y,
+              path[i].x, path[i].y, path[i+1].x, path[i+1].y
+            );
+            if (dist < bestDist) { bestDist = dist; bestPt = point; }
+          }
+          return { ...wire, branchPoint: bestPt };
         });
         if (this.simulationMode) this.recomputeSimulation();
       }
@@ -743,7 +799,10 @@ export class Whiteboard implements OnDestroy {
     if (onBoard) {
       const type = this.dragState.gateType() as GateType;
       if (type) {
-        this.placeGate(type, event.clientX - rect.left - this.panX, event.clientY - rect.top - this.panY);
+        this.placeGate(type,
+          (event.clientX - rect.left - this.panX) / this.zoom,
+          (event.clientY - rect.top  - this.panY) / this.zoom,
+        );
       }
     }
     this.dragState.endDrag();
@@ -781,8 +840,10 @@ export class Whiteboard implements OnDestroy {
       //    nicht nur am Ausgangs-Pin. Elektrisch bleibt die Quelle weiterhin
       //    derselbe Ausgangs-Pin (fromGateId/fromPinIndex der Original-
       //    Leitung) — branchPoint ist rein für die Darstellung.
+      //    AUSNAHME: Stubs direkt am Ausgangs-Pin sind gesperrt (dort wird
+      //    stattdessen die Verneinung gesetzt, kein Abzweig erlaubt).
       const hit = this.findWireHitAt(lx, ly);
-      if (hit) {
+      if (hit && !this.findOutputStubAt(hit.point.x, hit.point.y)) {
         this.wireDrawing = {
           fromGateId:   hit.wire.fromGateId,
           fromPinIndex: hit.wire.fromPinIndex,
@@ -853,6 +914,110 @@ export class Whiteboard implements OnDestroy {
     return false;
   }
 
+  // ─── Negation (Ausgangs-Verneinung per Klick auf Ausgangs-Stub) ──────────────
+
+  /**
+   * Gibt zurück, ob sich der Punkt (lx,ly) im Ausgangs-Stub-Bereich
+   * (erste ~20 px nach dem Ausgangs-Pin) eines Gatters befindet.
+   * Nur im Pan-Modus sinnvoll (Verneinung setzen/entfernen).
+   */
+  private findOutputStubAt(
+    lx: number, ly: number
+  ): { gate: GateInstance; pinIndex: number } | null {
+    const STUB_LEN = 20;
+    const HIT_R    = 8;
+    for (const gate of this.gates) {
+      if (gate.type === 'text-label' || gate.type === 'output') continue;
+      const offsets = getGatePinOffsets(gate);
+      for (let i = 0; i < offsets.outputs.length; i++) {
+        const pos = getPinWorldPos(gate, 'output', i);
+        const dir = getPinDirection(gate, 'output');
+        const { dist } = this.closestPointOnSegment(
+          lx, ly,
+          pos.x, pos.y,
+          pos.x + dir.dx * STUB_LEN, pos.y + dir.dy * STUB_LEN
+        );
+        if (dist <= HIT_R) return { gate, pinIndex: i };
+      }
+    }
+    return null;
+  }
+
+  /** Setzt/entfernt die Verneinung für einen Ausgangs-Pin. */
+  toggleNegation(gateId: string, pinIndex: number): void {
+    this.pushHistory();
+    this.gates = this.gates.map(g => {
+      if (g.id !== gateId) return g;
+      const cur  = g.negatedOutputs ?? [];
+      const next = cur.includes(pinIndex)
+        ? cur.filter(i => i !== pinIndex)
+        : [...cur, pinIndex];
+      return { ...g, negatedOutputs: next };
+    });
+    if (this.simulationMode) this.recomputeSimulation();
+  }
+
+  /** Alle Verneinungs-Punkte für die SVG-Darstellung. */
+  getNegationDots(): { x: number; y: number; gateId: string; pinIndex: number }[] {
+    const res: { x: number; y: number; gateId: string; pinIndex: number }[] = [];
+    for (const gate of this.gates) {
+      if (!gate.negatedOutputs?.length) continue;
+      for (const pi of gate.negatedOutputs) {
+        const pos = getPinWorldPos(gate, 'output', pi);
+        const dir = getPinDirection(gate, 'output');
+        res.push({ x: pos.x + dir.dx * 10, y: pos.y + dir.dy * 10, gateId: gate.id, pinIndex: pi });
+      }
+    }
+    return res;
+  }
+
+  // ─── Minimap ───────────────────────────────────────────────────────────────
+
+  /** Berechnet alle für die Minimap benötigten Größen. */
+  get minimapData(): {
+    viewBox:      string;
+    gateRects:    { x: number; y: number; w: number; h: number }[];
+    viewportRect: { x: number; y: number; w: number; h: number };
+  } {
+    const PAD = 40;
+    let minX = 0, minY = 0, maxX = 400, maxY = 300;
+
+    if (this.gates.length > 0) {
+      minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
+      for (const g of this.gates) {
+        const dim = getGateDimensions(g);
+        minX = Math.min(minX, g.x);
+        minY = Math.min(minY, g.y);
+        maxX = Math.max(maxX, g.x + dim.w);
+        maxY = Math.max(maxY, g.y + dim.h);
+      }
+      minX -= PAD; minY -= PAD; maxX += PAD; maxY += PAD;
+    }
+
+    const gateRects = this.gates.map(g => {
+      const dim = getGateDimensions(g);
+      return { x: g.x - minX, y: g.y - minY, w: dim.w, h: dim.h };
+    });
+
+    const vpEl = this.viewportRef?.nativeElement;
+    const vpW  = vpEl ? vpEl.clientWidth  : 800;
+    const vpH  = vpEl ? vpEl.clientHeight : 600;
+    const vpLX = -this.panX / this.zoom - minX;
+    const vpLY = -this.panY / this.zoom - minY;
+
+    return {
+      viewBox:      `0 0 ${maxX - minX} ${maxY - minY}`,
+      gateRects,
+      viewportRect: { x: vpLX, y: vpLY, w: vpW / this.zoom, h: vpH / this.zoom },
+    };
+  }
+
+  // ─── Simulations-Signal-Zustand (für Properties Panel) ───────────────────
+
+  getGateSignalState(gateId: string): import('../../services/simulation.service').ComponentSignalState | null {
+    return this.signalStates.get(gateId) ?? null;
+  }
+
   // ─── Bauteil platzieren ────────────────────────────────────────────────────
 
   private placeGate(type: GateType, lx: number, ly: number): void {
@@ -897,7 +1062,7 @@ export class Whiteboard implements OnDestroy {
   // ─── Template-Hilfsmethoden ────────────────────────────────────────────────
 
   getGatesLayerTransform(): string {
-    return `translate(${this.panX}px, ${this.panY}px)`;
+    return `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
   }
 
   getGateTransform(gate: GateInstance): string {
@@ -1120,9 +1285,25 @@ export class Whiteboard implements OnDestroy {
   private toLogical(event: MouseEvent): { lx: number; ly: number } {
     const rect = this.viewportRef.nativeElement.getBoundingClientRect();
     return {
-      lx: event.clientX - rect.left - this.panX,
-      ly: event.clientY - rect.top  - this.panY,
+      lx: (event.clientX - rect.left - this.panX) / this.zoom,
+      ly: (event.clientY - rect.top  - this.panY) / this.zoom,
     };
+  }
+
+  /** Mausrad → Zoom zentriert auf die aktuelle Mausposition. */
+  @HostListener('wheel', ['$event'])
+  onWheel(event: WheelEvent): void {
+    event.preventDefault();
+    if (!this.viewportRef) return;
+    const rect = this.viewportRef.nativeElement.getBoundingClientRect();
+    const mx = event.clientX - rect.left;
+    const my = event.clientY - rect.top;
+    const factor  = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+    const newZoom = Math.max(0.1, Math.min(5, this.zoom * factor));
+    // Pan anpassen, damit der Punkt unter der Maus fixiert bleibt
+    this.panX = mx + (this.panX - mx) * (newZoom / this.zoom);
+    this.panY = my + (this.panY - my) * (newZoom / this.zoom);
+    this.zoom  = newZoom;
   }
 
   private dist(x1: number, y1: number, x2: number, y2: number): number {

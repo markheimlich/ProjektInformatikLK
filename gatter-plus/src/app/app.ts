@@ -6,6 +6,7 @@ import { PropertiesPanel, GatePropertyChange } from './components/properties-pan
 import { ToolMode }      from './components/toolbar-left/toolbar-left';
 import { GateInstance }  from './models/gate.model';
 import { ThemeService }  from './services/theme.service';
+import { ComponentSignalState } from './services/simulation.service';
 
 /**
  * Root-Komponente von GatterPLUS.
@@ -62,6 +63,13 @@ export class App implements OnInit {
   /** Ausgewählte Leitung (für Properties Panel — zeigt einen Löschen-Button) */
   get selectedWireId(): string | null {
     return this.whiteboardRef?.selectedWireId ?? null;
+  }
+
+  /** Aktueller Signalzustand des ausgewählten Gatters (für Properties Panel) */
+  get selectedGateSignalState(): ComponentSignalState | null {
+    const gate = this.selectedGate;
+    if (!gate || !this.whiteboardRef) return null;
+    return this.whiteboardRef.getGateSignalState(gate.id);
   }
 
   /** Eigenschafts-Änderungen vom Properties Panel ans Whiteboard weiterleiten */

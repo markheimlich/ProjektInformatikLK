@@ -37,6 +37,8 @@
     <app-properties-panel
       [selectedGate]="selectedGate"
       [selectedWireId]="selectedWireId"
+      [simulationMode]="simulationMode"
+      [signalState]="selectedGateSignalState"
       (gateChange)="onGateChange($event)"
       (gateDelete)="onGateDelete($event)"
       (wireDelete)="onWireDelete($event)"

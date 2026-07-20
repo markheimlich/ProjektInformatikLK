@@ -22,12 +22,13 @@
     <defs>
       <pattern
         id="wb-grid"
-        width="24" height="24"
+        [attr.width]="24 * zoom"
+        [attr.height]="24 * zoom"
         patternUnits="userSpaceOnUse"
-        [attr.x]="panX % 24"
-        [attr.y]="panY % 24"
+        [attr.x]="panX % (24 * zoom)"
+        [attr.y]="panY % (24 * zoom)"
       >
-        <circle cx="2" cy="2" r="1.2" class="grid-dot"/>
+        <circle [attr.cx]="2 * zoom" [attr.cy]="2 * zoom" [attr.r]="1.2 * zoom" class="grid-dot"/>
       </pattern>
     </defs>
     <rect width="100%" height="100%" fill="url(#wb-grid)"/>
@@ -105,9 +106,23 @@
           ></app-clock-gen>
         }
         @if (gate.type === 'text-label') {
-          <app-text-label
-            [label]="gate.label ?? 'Label'"
-          ></app-text-label>
+          @if (editingLabelGateId === gate.id) {
+            <!-- Text-Label Inline-Bearbeitung (Doppelklick) -->
+            <input
+              class="label-edit-input text-label-inline-edit"
+              type="text"
+              [(ngModel)]="editingLabelValue"
+              (keydown.enter)="commitLabel()"
+              (keydown.escape)="cancelEditLabel()"
+              (blur)="commitLabel()"
+              (mousedown)="$event.stopPropagation()"
+              (click)="$event.stopPropagation()"
+            />
+          } @else {
+            <app-text-label
+              [label]="gate.label ?? 'Label'"
+            ></app-text-label>
+          }
         }
 
         <!-- Label-Overlay: sichtbar wenn das Bauteil ein Label hat -->
@@ -196,6 +211,18 @@
       />
     }
 
+    <!-- Verneinungs-Punkte an Ausgangs-Stubs -->
+    @for (dot of getNegationDots(); track $index) {
+      <circle
+        [attr.cx]="dot.x"
+        [attr.cy]="dot.y"
+        r="6"
+        class="negation-dot"
+        [class.negation-high]="simulationMode && getSignalOutput(dot.gateId, dot.pinIndex) === true"
+        [class.negation-low]="simulationMode && getSignalOutput(dot.gateId, dot.pinIndex) === false"
+      />
+    }
+
   </svg>
 
   <!-- ── Pin-Highlight-Layer (nur im Wire-Modus) ────────────────────────── -->
@@ -234,5 +261,46 @@
       }
     </div>
   }
+
+  <!-- ── Zoom-Anzeige + Minimap (unten links) ──────────────────────────── -->
+  <div class="zoom-bar">
+    <span class="zoom-pct">{{ (zoom * 100).toFixed(0) }}%</span>
+    <button
+      class="minimap-toggle-btn"
+      (click)="minimapVisible = !minimapVisible"
+      [class.active]="minimapVisible"
+      title="Minimap ein-/ausblenden"
+      (mousedown)="$event.stopPropagation()"
+    >
+      <!-- 2×2-Gitter-Symbol -->
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <rect x="1"   y="1"   width="5" height="5" stroke="currentColor" stroke-width="1.5" rx="0.5"/>
+        <rect x="8"   y="1"   width="5" height="5" stroke="currentColor" stroke-width="1.5" rx="0.5"/>
+        <rect x="1"   y="8"   width="5" height="5" stroke="currentColor" stroke-width="1.5" rx="0.5"/>
+        <rect x="8"   y="8"   width="5" height="5" stroke="currentColor" stroke-width="1.5" rx="0.5"/>
+      </svg>
+    </button>
+
+    @if (minimapVisible) {
+      <div class="minimap" (mousedown)="$event.stopPropagation()">
+        <svg class="minimap-svg" [attr.viewBox]="minimapData.viewBox" preserveAspectRatio="xMidYMid meet">
+          @for (r of minimapData.gateRects; track $index) {
+            <rect
+              [attr.x]="r.x" [attr.y]="r.y"
+              [attr.width]="r.w" [attr.height]="r.h"
+              class="minimap-gate"
+            />
+          }
+          <rect
+            [attr.x]="minimapData.viewportRect.x"
+            [attr.y]="minimapData.viewportRect.y"
+            [attr.width]="minimapData.viewportRect.w"
+            [attr.height]="minimapData.viewportRect.h"
+            class="minimap-viewport-rect"
+          />
+        </svg>
+      </div>
+    }
+  </div>
 
 </div>

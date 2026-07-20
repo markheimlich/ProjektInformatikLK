@@ -69,6 +69,11 @@ export interface GateInstance {
    * Nur für type === 'clock-gen': Periodendauer in Millisekunden.
    */
   clockPeriodMs?: number;
+  /**
+   * Indizes der Ausgangs-Pins, deren Signal invertiert (verneint) wird.
+   * Wird im Pan-Modus durch Klick auf den Ausgangs-Stub gesetzt/entfernt.
+   */
+  negatedOutputs?: number[];
 }
 
 /**

@@ -75,5 +75,16 @@
       [placeholder]="isTextLabel ? 'Label-Text' : 'Bauteil-Name…'"
     />
   </div>
+
+  @if (getGateDescription()) {
+  <div class="section info-section">
+    <div class="section-title">Funktionsweise</div>
+    <p class="gate-description">{{ getGateDescription() }}</p>
+    @if (simulationMode && getCurrentStateDescription()) {
+    <div class="section-title state-title">Aktueller Zustand</div>
+    <pre class="gate-state">{{ getCurrentStateDescription() }}</pre>
+    }
+  </div>
+  }
 </div>
 }

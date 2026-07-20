@@ -80,11 +80,15 @@ export class SimulationService {
 
       if (this.isSource(gate)) {
         // Eingangs-Schalter / Taktgeber: Ausgang direkt aus gespeichertem Wert
-        outputSignals = [gate.inputValue ?? false];
+        const raw = gate.inputValue ?? false;
+        outputSignals = [gate.negatedOutputs?.includes(0) ? !raw : raw];
       } else if (gate.type === 'jk-ff') {
         // Flip-Flop: Ausgang aus aktuellem Speicherzustand (wird gehalten)
         const q = gate.ffState ?? false;
-        outputSignals = [q, !q];
+        outputSignals = [
+          gate.negatedOutputs?.includes(0) ? !q : q,
+          gate.negatedOutputs?.includes(1) ? q  : !q,
+        ];
       } else {
         // Übrige Gatter: letzten bekannten Ausgang als Schleifen-Startwert
         const prev = this.prevOutputs.get(gate.id);
@@ -109,7 +113,10 @@ export class SimulationService {
       gate.ffState = newQ;
       // Taktzustand für die Flankenerkennung im nächsten Schritt merken
       gate.ffPrevClock = state.inputSignals[2] === true;
-      state.outputSignals = [newQ, !newQ];
+      state.outputSignals = [
+        gate.negatedOutputs?.includes(0) ? !newQ : newQ,
+        gate.negatedOutputs?.includes(1) ? newQ  : !newQ,
+      ];
     }
 
     // ── 4. Bei Zustandswechsel erneut einpendeln, damit nachgelagerte ────────
@@ -207,67 +214,76 @@ export class SimulationService {
     gate: GateInstance,
     inputs: (boolean | null)[]
   ): (boolean | null)[] {
+    let out: (boolean | null)[];
     switch (gate.type) {
       // ── AND: HIGH nur wenn ALLE Eingänge HIGH ─────────────────────────────
       case 'and': {
-        if (inputs.some(v => v === false)) return [false];
-        if (inputs.some(v => v === null)) return [null];
-        return [true];
+        if (inputs.some(v => v === false)) { out = [false]; break; }
+        if (inputs.some(v => v === null))  { out = [null];  break; }
+        out = [true]; break;
       }
 
       // ── OR: HIGH wenn MINDESTENS EIN Eingang HIGH ─────────────────────────
       case 'or': {
-        if (inputs.some(v => v === true)) return [true];
-        if (inputs.some(v => v === null)) return [null];
-        return [false];
+        if (inputs.some(v => v === true))  { out = [true];  break; }
+        if (inputs.some(v => v === null))  { out = [null];  break; }
+        out = [false]; break;
       }
 
       // ── NOT: Umkehrung des einzigen Eingangs ──────────────────────────────
       case 'not': {
-        if (inputs[0] === null) return [null];
-        return [!inputs[0]];
+        if (inputs[0] === null) { out = [null]; break; }
+        out = [!inputs[0]]; break;
       }
 
       // ── XOR: HIGH wenn UNGERADE ANZAHL von Eingängen HIGH ─────────────────
       case 'xor': {
-        if (inputs.some(v => v === null)) return [null];
+        if (inputs.some(v => v === null)) { out = [null]; break; }
         const highCount = inputs.filter(v => v === true).length;
-        return [highCount % 2 === 1];
+        out = [highCount % 2 === 1]; break;
       }
 
       // ── Halbaddierer: S = A XOR B,  C = A AND B ───────────────────────────
       case 'half-adder': {
         const [a, b] = inputs;
-        if (a === null || b === null) return [null, null];
-        return [a !== b, a && b];
+        if (a === null || b === null) { out = [null, null]; break; }
+        out = [a !== b, a && b]; break;
       }
 
       // ── Volladdierer: S = A XOR B XOR Cin, Cout = Majorität ──────────────
       case 'full-adder': {
         const [a, b, cin] = inputs;
-        if (a === null || b === null || cin === null) return [null, null];
+        if (a === null || b === null || cin === null) { out = [null, null]; break; }
         const sum  = (a ? 1 : 0) + (b ? 1 : 0) + (cin ? 1 : 0);
-        const s    = (sum % 2) === 1;        // Summen-Bit
-        const cout = sum >= 2;               // Übertrags-Bit
-        return [s, cout];
+        out = [(sum % 2) === 1, sum >= 2]; break;
       }
 
       // ── JK-Flip-Flop: Ausgang wird gehalten (Zustand → nextFlipFlopState) ─
       case 'jk-ff': {
         const q = gate.ffState ?? false;
-        return [q, !q];
+        out = [
+          gate.negatedOutputs?.includes(0) ? !q : q,
+          gate.negatedOutputs?.includes(1) ? q  : !q,
+        ];
+        return out; // Negation bereits angewandt, kein zweiter Durchlauf
       }
 
       // ── Bauteile ohne berechenbaren Ausgang ───────────────────────────────
-      case 'output':      // Ausgangs-LED (nur Eingang)
+      case 'output':
       case 'text-label':
       case 'input':
       case 'clock-gen':
-        return [];
-
       default:
         return [];
     }
+
+    // Output-Verneinung anwenden (falls konfiguriert)
+    if (gate.negatedOutputs?.length) {
+      out = out.map((v, i) =>
+        gate.negatedOutputs!.includes(i) && v !== null ? !v : v
+      );
+    }
+    return out;
   }
 
   /**
